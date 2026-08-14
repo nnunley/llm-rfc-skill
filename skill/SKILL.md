@@ -115,6 +115,9 @@ names the requirement IDs it implements; every `[R-]` ID in the RFC appears
 in at least one task; and a task's exit criterion is its scenarios passing
 **plus the rest of the corpus staying green**. Coverage check:
 `grep -o '\[R-[a-z-]*\]'` over RFC and plan must yield the same set.
+This contract is workflow-agnostic: it works standalone or as the
+durable-decision layer under a skill-based pipeline (e.g. superpowers
+brainstorming feeding the interview, writing-plans consuming the IDs).
 
 ## Formal language
 

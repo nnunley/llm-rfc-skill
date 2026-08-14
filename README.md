@@ -91,6 +91,21 @@ human/LLM authorship around one law:
 - **Retrofit.** Adopt in an existing repo by writing the RFC for the next
   contested decision — not by back-filling history.
 
+## Standalone or supplemental
+
+This process is **standalone by design** — nothing in it depends on any
+other skill, framework, or harness; the documents are plain markdown and
+the tooling is portable shell. But it is also built to **supplement
+skill-based workflows** such as
+[superpowers](https://github.com/obra/superpowers): a brainstorming or
+interview phase can feed the RFC's requirements; an implementation-planning
+skill can consume the RFC's `[R-]` requirement IDs as its task coverage
+contract (every task names the IDs it implements; done = its evidence
+green plus the rest of the corpus staying green); and the conformance
+corpus serves as the regression wall no matter which workflow does the
+implementing. Use it as the whole process, or as the durable-decision
+layer under the process you already have.
+
 ## Installation
 
 **The skill (Claude Code):**
