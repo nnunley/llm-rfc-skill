@@ -299,7 +299,10 @@ superseding drafts. The full track inserts a LAST-CALL window when more
 than one party holds a veto, when published normative behavior changes,
 when a trust boundary is crossed, or when the document standardizes across
 projects. Consensus is rough (RFC 7282): objections are addressed, not
-necessarily withdrawn, and humans adjudicate when contested. Any
+necessarily withdrawn, and humans adjudicate when contested. Silence
+implies consent ONLY inside a declared LAST-CALL window; silence during
+the draft stage implies nothing at all — a draft comment period asks
+"what is wrong?", a last call asks only "does anyone object?". Any
 participant, human or agent, is welcome as author, reviewer, or objector.
 
 Published RFCs are cited across repository series as `<series>/<NNNN>` where
@@ -452,3 +455,7 @@ constrained is excluded from judging its own conformance.
   whose behavior they govern; project-specific RFCs belong in that project's
   own rfc/ series, never centralized. This repository carries only
   cross-project process/skill RFCs. README.md clarified accordingly.
+- 2026-08-14: the silence-default distinction made explicit — consent by
+  silence exists only inside a declared LAST-CALL window; draft-stage
+  silence carries no meaning (comment request and consent gate are
+  different instruments).

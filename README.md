@@ -33,3 +33,17 @@ it; the documents are plain markdown and outlive the tooling.
 skill/rfc-lint rfc/draft-ndn-authoring-rfcs-00.md   # structure: 0 errors
 skill/rfc-run  rfc/draft-ndn-authoring-rfcs-00.md   # evidence: replays green
 ```
+
+## License
+
+Dual-licensed by content type:
+
+- **Text** — the RFC series (`rfc/`), `skill/SKILL.md`, `skill/template.md`,
+  and this README are licensed under [CC BY 4.0](LICENSE-CC-BY-4.0):
+  reuse and adapt freely, with attribution.
+- **Code** — the validation and tooling scripts (`skill/rfc-lint`,
+  `skill/rfc-tangle`, `skill/rfc-run`, `skill/rfc-search`,
+  `skill/rfc-fsm-render`) are licensed under the [MIT License](LICENSE-MIT).
+
+Documents produced *using* this process belong to their authors and carry
+whatever license their home repository chooses.
