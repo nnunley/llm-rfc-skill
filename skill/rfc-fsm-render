@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# rfc-fsm-render — derive display forms from a tangled .fsm file.
+# Usage: rfc-fsm-render <file.fsm> {mermaid|d2}
+# Renders are DERIVED artifacts: the fsm block is the verified source of
+# truth; never edit a render. mermaid targets GitHub-native HTML display;
+# d2 targets `d2 --ascii` box-model text (and SVG).
+set -eu
+
+[[ $# -eq 2 ]] || { echo "usage: rfc-fsm-render <file.fsm> {mermaid|d2}" >&2; exit 2; }
+f="$1"; mode="$2"
+[[ -f "$f" ]] || { echo "rfc-fsm-render: $f not found" >&2; exit 1; }
+
+case "$mode" in
+mermaid)
+    echo "stateDiagram-v2"
+    awk '
+        { sub(/[[:space:]]*;.*$/, "") }
+        /^[[:space:]]*$/ { next }
+        $1 == "initial"  { printf "    [*] --> %s\n", $2; next }
+        $1 == "terminal" { for (i = 2; i <= NF; i++) printf "    %s --> [*]\n", $i; next }
+        NF == 3 && $2 == "->" { printf "    %s --> %s\n", $1, $3 }
+    ' "$f"
+    ;;
+d2)
+    awk '
+        { sub(/[[:space:]]*;.*$/, "") }
+        /^[[:space:]]*$/ { next }
+        $1 == "initial"  { printf "start: \"\" { shape: circle; width: 20 }\nstart -> %s\n", $2; next }
+        $1 == "terminal" { for (i = 2; i <= NF; i++) printf "%s.style.double-border: true\n", $i; next }
+        NF == 3 && $2 == "->" { printf "%s -> %s\n", $1, $3 }
+    ' "$f"
+    ;;
+*)
+    echo "rfc-fsm-render: unknown mode '$mode' (mermaid|d2)" >&2; exit 2
+    ;;
+esac

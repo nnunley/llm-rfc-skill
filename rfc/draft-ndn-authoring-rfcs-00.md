@@ -149,6 +149,19 @@ $ rfc-lint draft-a-x-00.md 2>&1 | grep -c "undefined rule bar"
 1
 ```
 
+State machines are expressed in fsm blocks — `initial`, `A -> B`
+transitions, `terminal` — validated for a single initial state,
+reachability of every state, terminal closure, and dead ends [R-fsm];
+witness tables of allowed and forbidden transitions are cross-checked
+against the machine, and mermaid/D2 renders are derived by
+`rfc-fsm-render`, never authored.
+
+```transcript @R-fsm
+$ printf '# draft-a-x-00: X\n**Status:** DRAFT\n```fsm\ninitial A\nA -> B\nC -> B\nterminal B\n```\n' > draft-a-x-00.md
+$ rfc-lint draft-a-x-00.md 2>&1 | grep -c "unreachable"
+1
+```
+
 ### Embedded evidence
 
 A provable requirement carries a `[R-<slug>]` marker; its evidence is
@@ -194,6 +207,30 @@ call is retracted as premature (a last call asserts a settled design;
 active revision falsifies the assertion). From `LAST-CALL` a document
 proceeds to `PUBLISHED` on rough consensus, returns to `DRAFT`, or ends
 `WITHDRAWN` — a Changelog entry records which, and why.
+The complete lifecycle transition relation is exactly the machine below;
+a status change outside it is a process violation. [R-lifecycle]
+
+```fsm @R-lifecycle
+initial DRAFT
+DRAFT -> LAST-CALL
+DRAFT -> PUBLISHED       ; fast track
+DRAFT -> WITHDRAWN
+LAST-CALL -> PUBLISHED
+LAST-CALL -> DRAFT       ; objections unaddressed, or call retracted
+LAST-CALL -> WITHDRAWN
+PUBLISHED -> SUPERSEDED
+PUBLISHED -> HISTORIC
+terminal SUPERSEDED HISTORIC WITHDRAWN
+```
+
+<!-- evidence: @R-lifecycle -->
+| from       | to         | allowed |
+|------------|------------|---------|
+| LAST-CALL  | DRAFT      | yes     |
+| DRAFT      | PUBLISHED  | yes     |
+| PUBLISHED  | DRAFT      | no      |
+| SUPERSEDED | DRAFT      | no      |
+| WITHDRAWN  | LAST-CALL  | no      |
 Full replacement uses `Obsoletes:`; partial amendment uses `Updates:` and
 replaces only the requirement IDs it names; retirement without a successor
 is `HISTORIC`; dead drafts are `WITHDRAWN`. Requirement IDs are permanent
@@ -344,3 +381,8 @@ constrained is excluded from judging its own conformance.
   outbound transitions (the same day's premature-call retraction was
   therefore unspecified behavior). LAST-CALL -> DRAFT | PUBLISHED |
   WITHDRAWN now explicit.
+- 2026-08-14: fsm evidence type added — the lifecycle transition relation
+  is now a verified machine [R-lifecycle] with allowed/forbidden witnesses
+  (including LAST-CALL -> DRAFT, the transition exercised before it was
+  specified), and fsm validation itself is a proven requirement [R-fsm].
+  Displays (mermaid/D2) are derived by rfc-fsm-render, never authored.

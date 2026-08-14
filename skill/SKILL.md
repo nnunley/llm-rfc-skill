@@ -95,6 +95,11 @@ tangled file and exits 0/1. Choose types by least indirection:
   state transitions); runner = thin row adapter.
 - `abnf` — the ∀ statement of syntax; pair it with witness rows (concrete
   valid/invalid strings) as its checkable shadow.
+- `fsm` — state machines (`initial` / `A -> B` / `terminal ...`), validated
+  for single initial, reachability, terminal closure, and dead ends;
+  allowed/forbidden transition witness tables are cross-checked against the
+  machine; mermaid/D2 displays are derived via `rfc-fsm-render`, never
+  authored.
 
 The tangled evidence of ALL published RFCs is the conformance corpus: CI
 runs the WHOLE corpus, never just the newest RFC's — work on one RFC cannot

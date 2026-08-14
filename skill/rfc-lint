@@ -244,6 +244,119 @@ lint_file() {
         na "evidence"
     fi
 
+    # 4d. FSM blocks (```fsm fences, tagged or not): a tiny verifiable
+    # state-machine notation — "initial S", "S -> T", "terminal S...",
+    # ";" comments. Structural validation: single initial, every state
+    # reachable from it, terminal states have no outgoing transitions,
+    # no non-terminal dead ends, no duplicate transitions. Renders
+    # (mermaid/d2 via rfc-fsm-render) are derived artifacts, never sources.
+    local fsm_problems nfsm
+    nfsm=$(grep -c '^```fsm' "$f")
+    if [[ "$nfsm" -eq 0 ]]; then na "fsm"; else ck "fsm($nfsm block(s))"; fi
+    fsm_problems=$(awk '
+        /^```fsm/ { infsm = 1; init = ""; delete_arrays(); next }
+        infsm && /^```$/ { infsm = 0; finish(); next }
+        !infsm { next }
+        {
+            line = $0
+            sub(/[[:space:]]*;.*$/, "", line)
+            if (line ~ /^[[:space:]]*$/) next
+            n = split(line, w, /[[:space:]]+/)
+            # leading empty token from indentation
+            i0 = (w[1] == "") ? 2 : 1
+            if (w[i0] == "initial" && n - i0 + 1 == 2) {
+                if (init != "") print "duplicate initial state"
+                init = w[i0+1]; states[init] = 1; next
+            }
+            if (w[i0] == "terminal") {
+                for (i = i0+1; i <= n; i++) { term[w[i]] = 1; states[w[i]] = 1 }
+                next
+            }
+            if (n - i0 + 1 == 3 && w[i0+1] == "->") {
+                from = w[i0]; to = w[i0+2]
+                states[from] = 1; states[to] = 1
+                key = from SUBSEP to
+                if (key in trans) print "duplicate transition " from " -> " to
+                trans[key] = 1; outdeg[from]++
+                adj[from] = adj[from] " " to
+                next
+            }
+            print "line " NR ": not an fsm statement: " $0
+        }
+        function delete_arrays(   k) {
+            split("", states); split("", term); split("", trans)
+            split("", outdeg); split("", adj); split("", seen); split("", q)
+        }
+        function finish(   qi, qn, j, m, a, s) {
+            if (init == "") { print "missing initial state"; return }
+            qn = 0; q[qn++] = init; seen[init] = 1
+            for (qi = 0; qi < qn; qi++) {
+                m = split(adj[q[qi]], a, " ")
+                for (j = 1; j <= m; j++)
+                    if (a[j] != "" && !(a[j] in seen)) { seen[a[j]] = 1; q[qn++] = a[j] }
+            }
+            for (s in states) if (!(s in seen)) print "state " s " unreachable from " init
+            for (s in term) if (s in outdeg) print "terminal state " s " has outgoing transitions"
+            for (s in states) if (!(s in term) && !(s in outdeg)) print "state " s " is a dead end (no outgoing transitions, not terminal)"
+        }
+        END { if (infsm) print "unclosed fsm block" }
+    ' "$f")
+    if [[ -n "$fsm_problems" ]]; then
+        while IFS= read -r p; do err "$f" "FSM: $p"; done <<< "$fsm_problems"
+    fi
+
+    # 4e. FSM witness cross-check: when a tag has BOTH an fsm block and a
+    # witness table (| from | to | allowed |), every "yes" row must be a
+    # transition of the machine and every "no" row must not be.
+    local fsm_witness_problems
+    fsm_witness_problems=$(awk '
+        /^```fsm @R-[a-z0-9-]+$/ { tag = $2; sub(/^@R-/, "", tag); infsm = 1; next }
+        infsm && /^```$/ { infsm = 0; next }
+        infsm {
+            line = $0; sub(/[[:space:]]*;.*$/, "", line)
+            n = split(line, w, /[[:space:]]+/)
+            i0 = (w[1] == "") ? 2 : 1
+            if (n - i0 + 1 == 3 && w[i0+1] == "->") print "T", tag, w[i0], w[i0+2]
+            next
+        }
+        /^<!-- *evidence: *@R-[a-z0-9-]+ *-->$/ {
+            wtag = $0; sub(/^<!-- *evidence: *@R-/, "", wtag); sub(/ *-->$/, "", wtag)
+            intab = 1; next
+        }
+        intab && /^\|/ {
+            line = $0; gsub(/^\||\|$/, "", line)
+            n = split(line, c, /\|/)
+            for (i = 1; i <= n; i++) { gsub(/^[[:space:]]+|[[:space:]]+$/, "", c[i]) }
+            if (n >= 3 && c[1] != "from" && c[1] !~ /^-+$/ && c[3] != "")
+                print "W", wtag, c[1], c[2], c[3]
+            next
+        }
+        intab { intab = 0 }
+    ' "$f" | awk '
+        $1 == "T" { trans[$2 SUBSEP $3 SUBSEP $4] = 1; hasfsm[$2] = 1; next }
+        $1 == "W" { wt[++nw] = $2 SUBSEP $3 SUBSEP $4 SUBSEP $5 }
+        END {
+            for (i = 1; i <= nw; i++) {
+                split(wt[i], p, SUBSEP)
+                tag = p[1]; from = p[2]; to = p[3]; verdict = p[4]
+                if (!(tag in hasfsm)) continue
+                intrans = ((tag SUBSEP from SUBSEP to) in trans)
+                if (verdict == "yes" && !intrans)
+                    print "witness @R-" tag ": " from " -> " to " marked allowed but absent from the machine"
+                if (verdict == "no" && intrans)
+                    print "witness @R-" tag ": " from " -> " to " marked forbidden but present in the machine"
+            }
+        }
+    ')
+    if [[ -n "$fsm_witness_problems" ]]; then
+        while IFS= read -r p; do err "$f" "FSM: $p"; done <<< "$fsm_witness_problems"
+        ck "fsm-witnesses"
+    elif grep -q '^```fsm @R-' "$f"; then
+        ck "fsm-witnesses"
+    else
+        na "fsm-witnesses"
+    fi
+
     # 5. Supersession linkage
     if [[ "$status" == "SUPERSEDED" ]]; then
         grep -qE '^\*\*Superseded-By:\*\* *[0-9]{4}' "$f" || \
