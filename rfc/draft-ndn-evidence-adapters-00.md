@@ -32,7 +32,10 @@ and a networked telnet harness. The markdown articulation of moot was
 created precisely to have a structured representation that decouples the
 execution engine from the test. The tests outlived engine decisions;
 the format was the contract. Evidence in this series adopts the same
-separation.
+separation. What is adopted is the separation alone: moot's surface
+syntax (the `@`-prefixed persona directives echo MOO's own command
+idiom) is domain vernacular, and each vocabulary here speaks its own
+domain's idiom rather than inheriting another's.
 
 ## Terminology
 
@@ -179,3 +182,6 @@ hygiene sandbox remains the floor, not a security boundary.
   representation decoupling the execution engine from the test. Evidence
   here is deliberately red until rfc-run gains adapter dispatch
   (spec-first; the transcripts above are the acceptance criteria).
+- 2026-08-14: clarified on review — moot's @-prefix is MOO-style command
+  idiom, not part of the adopted pattern; vocabularies use their own
+  domain's vernacular.
