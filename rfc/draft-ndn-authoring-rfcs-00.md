@@ -1,6 +1,6 @@
 # draft-ndn-authoring-rfcs-00: The RFC Process for Human–LLM Specification Authoring
 
-**Status:** LAST-CALL
+**Status:** DRAFT
 **Category:** BCP
 **Authors:** Norman Nunley, Jr <nnunley@gmail.com>, Claude (drafting agent)
 **Date:** 2026-08-14
@@ -331,3 +331,6 @@ constrained is excluded from judging its own conformance.
 - 2026-08-14: entered LAST-CALL (full track: this document standardizes
   across projects) — objections by 2026-08-21. Reviewers invited: chazu,
   mparrett, rdaum.
+- 2026-08-14: returned to DRAFT — the last call was premature (the document
+  is still under active revision; a last call asserts a settled design).
+  Review remains welcome as ordinary draft review.
