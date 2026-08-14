@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# env-scrub — built-in sandbox provider: the hygiene floor, generalized
+# from the transcript adapter's inline sandbox. Fresh temporary HOME and
+# XDG_CONFIG_HOME, GIT_CONFIG_NOSYSTEM=1; working directory and PATH are
+# the caller's. Hygiene, NOT a security boundary.
+# Contract (draft-ndn-sandbox-providers-00): env-scrub [flags] -- cmd...
+set -u
+
+while [ $# -gt 0 ] && [ "$1" != "--" ]; do shift; done
+[ "${1:-}" = "--" ] || { echo "usage: env-scrub -- command args..." >&2; exit 2; }
+shift
+[ $# -ge 1 ] || { echo "usage: env-scrub -- command args..." >&2; exit 2; }
+
+scratch=$(mktemp -d)
+HOME="$scratch" XDG_CONFIG_HOME="$scratch/.config" GIT_CONFIG_NOSYSTEM=1 "$@"
+rc=$?
+rm -rf "$scratch"
+exit $rc

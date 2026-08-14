@@ -14,9 +14,18 @@
 # mode) -> the tooling's built-in adapters/. Resolution failure for a
 # typed block is a hard error, never a silent skip.
 #
-# Adapters own environment concerns. The built-in `transcript` adapter's
-# sandbox is hygiene, not a security boundary — isolate foreign corpora
-# at the deployment layer.
+# Sandbox providers, per draft-ndn-sandbox-providers-00: every adapter
+# invocation may be wrapped as `provider [flags] -- adapter file`.
+# Selection precedence: --sandbox NAME > RFC_SANDBOX > the series profile
+# file `sandbox` (corpus mode; first non-blank non-# line = name + flags).
+# The reserved name `none` disables wrapping. Provider names resolve like
+# adapters: RFC_SANDBOX_PATH -> series-local sandboxes/ (or --sandbox-dir)
+# -> built-in sandboxes/. A selected provider that cannot be resolved is a
+# hard error — never a silent bare run.
+#
+# Adapters own engine mechanics; providers own isolation. The built-in
+# `env-scrub` provider is hygiene, not a security boundary — isolate
+# foreign corpora at the deployment layer.
 set -u
 
 SKILL_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -32,33 +41,85 @@ resolve_adapter() {
     return 1
 }
 
-# ---- adapter mode ----
+resolve_sandbox() {
+    local t="$1" series_dir="$2" IFS=':' d
+    for d in ${RFC_SANDBOX_PATH:-}; do
+        [ -n "$d" ] && [ -x "$d/$t" ] && { printf '%s' "$d/$t"; return 0; }
+    done
+    [ -n "$series_dir" ] && [ -x "$series_dir/$t" ] && { printf '%s' "$series_dir/$t"; return 0; }
+    [ -x "$SKILL_DIR/sandboxes/$t" ] && { printf '%s' "$SKILL_DIR/sandboxes/$t"; return 0; }
+    return 1
+}
+
+# read_profile FILE -> sets PROFILE=(name flags...); false if no effective line
+read_profile() {
+    local line
+    while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in ''|'#'*) continue ;; esac
+        read -r -a PROFILE <<< "$line"
+        return 0
+    done < "$1"
+    return 1
+}
+
 ADAPTER_DIR=""
+SANDBOX_DIR=""
+SANDBOX_FLAG=""
 TYPE=""
 ARGS=()
 while [ $# -gt 0 ]; do
     case "$1" in
         --adapter-dir) ADAPTER_DIR="$2"; shift 2 ;;
+        --sandbox-dir) SANDBOX_DIR="$2"; shift 2 ;;
+        --sandbox)     SANDBOX_FLAG="$2"; shift 2 ;;
         --type)        TYPE="$2"; shift 2 ;;
         *)             ARGS+=("$1"); shift ;;
     esac
 done
 set -- "${ARGS[@]:-}"
 
+# ---- adapter mode ----
 if [ -n "$TYPE" ]; then
-    [ $# -eq 1 ] || { echo "usage: rfc-run [--adapter-dir DIR] --type T <file>" >&2; exit 2; }
+    [ $# -eq 1 ] || { echo "usage: rfc-run [--adapter-dir DIR] [--sandbox NAME] [--sandbox-dir DIR] --type T <file>" >&2; exit 2; }
     adapter=$(resolve_adapter "$TYPE" "$ADAPTER_DIR") || {
         echo "rfc-run: no adapter found for type $TYPE"
         exit 1
     }
+    sbname="${SANDBOX_FLAG:-${RFC_SANDBOX:-}}"
+    if [ -n "$sbname" ] && [ "$sbname" != none ]; then
+        provider=$(resolve_sandbox "$sbname" "$SANDBOX_DIR") || {
+            echo "rfc-run: no sandbox provider found for $sbname"
+            exit 1
+        }
+        exec "$provider" -- "$adapter" "$1"
+    fi
     exec "$adapter" "$1"
 fi
 
 # ---- corpus mode ----
-[ $# -ge 1 ] || { echo "usage: rfc-run <rfc.md>... | rfc-run [--adapter-dir DIR] --type T <file>" >&2; exit 2; }
+[ $# -ge 1 ] || { echo "usage: rfc-run <rfc.md>... | rfc-run [--adapter-dir DIR] [--sandbox NAME] [--sandbox-dir DIR] --type T <file>" >&2; exit 2; }
 
 for rfc in "$@"; do
-    series_adapters="$(cd "$(dirname "$rfc")" 2>/dev/null && pwd)/adapters"
+    series_dir="$(cd "$(dirname "$rfc")" 2>/dev/null && pwd)"
+    series_adapters="$series_dir/adapters"
+    series_sandboxes="${SANDBOX_DIR:-$series_dir/sandboxes}"
+
+    # sandbox selection: flag > env > series profile > none
+    PROFILE=()
+    sbname="${SANDBOX_FLAG:-${RFC_SANDBOX:-}}"
+    if [ -z "$sbname" ] && [ -f "$series_dir/sandbox" ] && read_profile "$series_dir/sandbox"; then
+        sbname="${PROFILE[0]}"
+        PROFILE=("${PROFILE[@]:1}")
+    fi
+    provider=""
+    if [ -n "$sbname" ] && [ "$sbname" != none ]; then
+        if ! provider=$(resolve_sandbox "$sbname" "$series_sandboxes"); then
+            echo "rfc-run: no sandbox provider found for $sbname"
+            FAILS=$((FAILS + 1))
+            continue
+        fi
+    fi
+
     tangled=$(mktemp -d)
     "$SKILL_DIR/rfc-tangle" "$rfc" "$tangled" >/dev/null
     found=0
@@ -71,7 +132,12 @@ for rfc in "$@"; do
             FAILS=$((FAILS + 1))
             continue
         fi
-        if "$adapter" "$t"; then
+        if [ -n "$provider" ]; then
+            ok=0; "$provider" ${PROFILE[@]+"${PROFILE[@]}"} -- "$adapter" "$t" || ok=$?
+        else
+            ok=0; "$adapter" "$t" || ok=$?
+        fi
+        if [ "$ok" = 0 ]; then
             echo "PASS $(basename "$t")"
         else
             echo "FAIL $(basename "$t")"

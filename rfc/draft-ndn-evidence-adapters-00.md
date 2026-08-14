@@ -199,6 +199,9 @@ hygiene sandbox remains the floor, not a security boundary.
   evidence is expected to move to a `gi-session` vocabulary by revision.
 - FitNesse and Gherkin fixture experience — recorded in the process BCP's
   rejected-forms decision record.
+- draft-ndn-sandbox-providers-00 — refines this document's "adapters own
+  all environment concerns": adapters own engine mechanics; isolation is
+  a configurable provider seam wrapped outside the adapter by the runner.
 - FitNesse SLIM (Simple List Invocation Method) — script tables compiled
   to plain instruction lists for language-agnostic execution; the
   flow-vocabulary precedent. http://fitnesse.org/FitNesse.UserGuide.WritingAcceptanceTests.SliM
@@ -222,3 +225,6 @@ hygiene sandbox remains the floor, not a security boundary.
   referenced an unprovisioned directory, caught by implementing against
   it), asserts both verdict directions, and the resolution transcript
   asserts the error message. Corpus green with rfc-run adapter dispatch.
+- 2026-08-14: environment ownership refined by
+  draft-ndn-sandbox-providers-00 — isolation moves to a configurable
+  provider seam; adapters keep engine mechanics (see References).

@@ -93,6 +93,11 @@ tangled file and exits 0/1. Choose types by least indirection:
   replay in the hygiene sandbox) and `fsm` (structural validation).
   Prefer thin declarative vocabularies over raw shell once a domain
   accumulates evidence.
+- Isolation is a separate seam (draft-ndn-sandbox-providers-00): a
+  **sandbox provider** wraps any adapter run (`provider [flags] -- adapter
+  file`), selected by `--sandbox NAME` > `RFC_SANDBOX` > the series
+  profile file `sandbox`; a selected-but-unresolvable provider is a hard
+  error, never a silent bare run. Built-in: `env-scrub` (hygiene floor).
 - Project session formats (e.g. mooR's `moot`) — register the existing
   runner; the fenced block is the file, no transliteration.
 - Evidence tables — one row per case for rule surfaces (validity matrices,
