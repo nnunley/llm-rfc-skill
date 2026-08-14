@@ -1,6 +1,6 @@
 # draft-ndn-authoring-rfcs-00: The RFC Process for Human–LLM Specification Authoring
 
-**Status:** DRAFT
+**Status:** LAST-CALL
 **Category:** BCP
 **Authors:** Norman Nunley, Jr <nnunley@gmail.com>, Claude (drafting agent)
 **Date:** 2026-08-14
@@ -328,3 +328,6 @@ constrained is excluded from judging its own conformance.
   git config AND redirect XDG_CONFIG_HOME (host excludes had leaked), and
   expected-output lines beginning "$ " are inexpressible — asserted via
   projection (recorded as a normative notation limit).
+- 2026-08-14: entered LAST-CALL (full track: this document standardizes
+  across projects) — objections by 2026-08-21. Reviewers invited: chazu,
+  mparrett, rdaum.

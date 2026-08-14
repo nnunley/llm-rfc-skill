@@ -1,0 +1,228 @@
+#!/usr/bin/env bash
+# rfc-lint — verify RFC-style project documents.
+# Usage: rfc-lint <docs/rfc/NNNN-slug.md>...   (exit 1 on any ERROR)
+# Checks: identity, status vocabulary, required sections, BCP 14 keyword
+# discipline, supersession linkage, published-immutability (git working tree).
+set -u
+
+ERRORS=0
+WARNINGS=0
+err()  { echo "ERROR   $1: $2"; ERRORS=$((ERRORS + 1)); }
+warn() { echo "WARNING $1: $2"; WARNINGS=$((WARNINGS + 1)); }
+
+REQUIRED_SECTIONS="Abstract Motivation Terminology Specification Alternatives_Considered Security_Considerations References Changelog"
+VALID_STATUS="DRAFT|LAST-CALL|PUBLISHED|SUPERSEDED|WITHDRAWN|HISTORIC"
+VALID_CATEGORY="Standards-Track|Informational|Experimental|BCP"
+BCP14_RE='\b(MUST NOT|MUST|REQUIRED|SHALL NOT|SHALL|SHOULD NOT|SHOULD|RECOMMENDED|NOT RECOMMENDED|MAY|OPTIONAL)\b'
+BCP14_BOILERPLATE='BCP 14'
+
+lint_file() {
+    local f="$1"
+    local base num header_num status
+
+    [[ -f "$f" ]] || { err "$f" "file not found"; return; }
+    base="$(basename "$f")"
+
+    # 1. Identity — two forms, IETF-style:
+    #    draft-<author>-<slug>-NN.md : unpublished (distributed, collision-free)
+    #    NNNN-slug.md                : number assigned at publication only
+    local form=""
+    if [[ "$base" =~ ^([0-9]{4})-[a-z0-9-]+\.md$ ]]; then
+        form="numbered"
+        num="${BASH_REMATCH[1]}"
+        header_num="$(sed -n 's/^# RFC \([0-9]\{4\}\):.*/\1/p' "$f" | head -1)"
+        if [[ -z "$header_num" ]]; then
+            err "$f" "missing title line '# RFC $num: <Title>'"
+        elif [[ "$header_num" != "$num" ]]; then
+            err "$f" "title says RFC $header_num but filename says $num"
+        fi
+    elif [[ "$base" =~ ^(draft-[a-z0-9]+-[a-z0-9-]+-[0-9]{2})\.md$ ]]; then
+        form="draft"
+        local draft_name="${BASH_REMATCH[1]}"
+        grep -q "^# $draft_name: " "$f" || \
+            err "$f" "missing title line '# $draft_name: <Title>'"
+    else
+        err "$f" "filename must be draft-<author>-<slug>-NN.md (unpublished) or NNNN-slug.md (published)"
+    fi
+
+    # 2. Status line and vocabulary
+    status="$(sed -n 's/^\*\*Status:\*\* *//p' "$f" | head -1 | tr -d '[:space:]')"
+    if [[ -z "$status" ]]; then
+        err "$f" "missing '**Status:** <${VALID_STATUS//|/ | }>' line"
+    elif ! [[ "$status" =~ ^(${VALID_STATUS})$ ]]; then
+        err "$f" "invalid status '$status' (valid: ${VALID_STATUS//|/, })"
+    fi
+
+    # 2a. Status must match the filename form: numbers exist only after
+    # publication (the merge of the index entry is the serialization point)
+    case "$form:$status" in
+        numbered:DRAFT|numbered:LAST-CALL|numbered:WITHDRAWN)
+            err "$f" "numbered RFCs are published by definition — unpublished docs use draft-<author>-<slug>-NN.md" ;;
+        draft:PUBLISHED|draft:SUPERSEDED|draft:HISTORIC)
+            err "$f" "publishing assigns the number: rename to NNNN-slug.md and add the index entry" ;;
+    esac
+
+    # 2c. LAST-CALL must state its deadline (RFC 2026 §6.1.2 mandates minimum
+    # review windows; here the window must at least be explicit)
+    if [[ "$status" == "LAST-CALL" ]]; then
+        grep -qiE "objections by [0-9]{4}-[0-9]{2}-[0-9]{2}" "$f" || \
+            err "$f" "LAST-CALL requires a Changelog line 'objections by YYYY-MM-DD'"
+    fi
+
+    # 2d. Updates:/Obsoletes: must reference published RFC numbers
+    local hdr val
+    for hdr in Updates Obsoletes; do
+        val="$(sed -n "s/^\*\*$hdr:\*\* *//p" "$f" | head -1)"
+        if [[ -n "$val" ]] && ! [[ "$val" =~ ^[0-9]{4}([[:space:]]*,[[:space:]]*[0-9]{4})*$ ]]; then
+            err "$f" "$hdr must list 4-digit RFC numbers (comma-separated), got '$val'"
+        fi
+    done
+
+    # 2b. Category line (optional; if present must use RFC 2026 vocabulary)
+    local category
+    category="$(sed -n 's/^\*\*Category:\*\* *//p' "$f" | head -1 | tr -d '[:space:]')"
+    if [[ -n "$category" ]] && ! [[ "$category" =~ ^(${VALID_CATEGORY})$ ]]; then
+        err "$f" "invalid category '$category' (valid: ${VALID_CATEGORY//|/, })"
+    fi
+
+    # 3. Required sections (## headings; underscores stand for spaces)
+    local sec heading
+    for sec in $REQUIRED_SECTIONS; do
+        heading="${sec//_/ }"
+        grep -qE "^## $heading$" "$f" || err "$f" "missing required section '## $heading'"
+    done
+
+    # 4. BCP 14 discipline
+    if grep -qE "$BCP14_RE" "$f"; then
+        grep -q "$BCP14_BOILERPLATE" "$f" || \
+            err "$f" "uses BCP 14 keywords but Terminology lacks the BCP 14 boilerplate sentence"
+    fi
+    # Lowercase normative-looking words inside Specification are ambiguous:
+    # readers cannot tell requirement from description. Flag each line.
+    awk '
+        /^## Specification$/ { insec = 1; next }
+        /^## / { insec = 0 }
+        /^```/ { infence = !infence; next }
+        insec && !infence && /(^|[^A-Za-z])(must|shall|should|may|required|recommended|optional)([^A-Za-z]|$)/ {
+            printf "%d:%s\n", NR, $0
+        }
+    ' "$f" | while IFS= read -r line; do
+        warn "$f" "ambiguous lowercase normative word in Specification (line ${line%%:*}) — uppercase it if it is a requirement, reword if not"
+    done
+    # awk|while runs in a subshell: recount warnings for the summary
+    local amb
+    amb=$(awk '
+        /^## Specification$/ { insec = 1; next }
+        /^## / { insec = 0 }
+        /^```/ { infence = !infence; next }
+        insec && !infence && /(^|[^A-Za-z])(must|shall|should|may|required|recommended|optional)([^A-Za-z]|$)/ { n++ }
+        END { print n + 0 }
+    ' "$f")
+    WARNINGS=$((WARNINGS + amb))
+
+    # 4b. ABNF grammar blocks (```abnf fences): validate rule-definition
+    # syntax and that every referenced rule name is defined here or is an
+    # RFC 5234 core rule. Duplicate definitions flagged unless incremental (=/).
+    local abnf_problems
+    abnf_problems=$(awk '
+        BEGIN {
+            split("ALPHA BIT CHAR CR CRLF CTL DIGIT DQUOTE HEXDIG HTAB LF LWSP OCTET SP VCHAR WSP", c, " ")
+            for (i in c) core[c[i]] = 1
+        }
+        /^```abnf$/ { inabnf = 1; next }
+        inabnf && /^```$/ { inabnf = 0; next }
+        !inabnf { next }
+        /^[[:space:]]*$/ || /^[[:space:]]*;/ { next }
+        /^[[:space:]]/ { next }                      # continuation line
+        {
+            line = $0
+            sub(/[[:space:]]*;.*$/, "", line)        # strip trailing comment
+            if (line !~ /^[A-Za-z][A-Za-z0-9-]*[[:space:]]*=\/?/) {
+                printf "line %d: not a rule definition: %s\n", NR, $0
+                next
+            }
+            name = line; sub(/[[:space:]]*=.*/, "", name)
+            if (line ~ /=\//) { } else if (name in defined) {
+                printf "line %d: duplicate definition of %s (use =/ to extend)\n", NR, name
+            }
+            defined[name] = 1
+        }
+        # second pass emulation: collect references as we go
+        {
+            line = $0
+            sub(/[[:space:]]*;.*$/, "", line)
+            sub(/^[A-Za-z][A-Za-z0-9-]*[[:space:]]*=\/?/, "", line)
+            gsub(/"[^"]*"/, " ", line)               # drop literals
+            gsub(/%[sib]?[0-9A-Fa-fx.\-]*/, " ", line) # drop numeric terminals
+            n = split(line, toks, /[^A-Za-z0-9-]+/)
+            for (i = 1; i <= n; i++)
+                if (toks[i] ~ /^[A-Za-z][A-Za-z0-9-]*$/) refs[toks[i]] = NR
+        }
+        END {
+            for (r in refs)
+                if (!(r in defined) && !(r in core))
+                    printf "line %d: reference to undefined rule %s\n", refs[r], r
+        }
+    ' "$f")
+    if [[ -n "$abnf_problems" ]]; then
+        while IFS= read -r p; do err "$f" "ABNF: $p"; done <<< "$abnf_problems"
+    fi
+
+    # 4c. Conformance pairing (literate form): [R-<slug>] requirement markers
+    # are proven by evidence embedded IN THIS DOCUMENT — typed fenced blocks
+    # whose info string carries the tag (```transcript @R-slug, ```moot
+    # @R-slug, ...) or tables preceded by an evidence comment
+    # (<!-- evidence: @R-slug -->). Pairing is bidirectional: a requirement
+    # without evidence and evidence without a requirement are both errors.
+    # Evidence blocks must be non-empty; rfc-tangle extracts them for the
+    # type's deterministic runner.
+    # Markers and evidence-comment tags are collected OUTSIDE fenced blocks
+    # only — evidence content that quotes a marker (fixtures, examples) must
+    # not create or satisfy an obligation. Fence-opener info strings are the
+    # one in-fence source, read from the opener line itself.
+    local markers tags m t prose
+    prose=$(awk '/^```/ { infence = !infence; next } !infence' "$f")
+    markers=$(grep -oE '\[R-[a-z0-9-]+\]' <<< "$prose" | tr -d '[]' | sort -u)
+    tags=$( { grep -oE '^```[a-z-]+ @R-[a-z0-9-]+' "$f"; grep -oE '<!-- *evidence: *@R-[a-z0-9-]+' <<< "$prose"; } \
+            | grep -oE '@R-[a-z0-9-]+' | tr -d '@' | sort -u )
+    while IFS= read -r m; do
+        [[ -z "$m" ]] && continue
+        grep -qx "$m" <<< "$tags" || \
+            err "$f" "requirement [$m] has no embedded evidence block tagged @$m"
+    done <<< "$markers"
+    while IFS= read -r t; do
+        [[ -z "$t" ]] && continue
+        grep -qx "$t" <<< "$markers" || \
+            err "$f" "evidence tagged @$t has no [$t] requirement marker"
+    done <<< "$tags"
+    # Non-empty check: every tagged fence must contain at least one
+    # non-blank line before its closing fence
+    local hollow
+    hollow=$(awk '
+        /^```[a-z-]+ @R-/ { tag = $2; inblk = 1; n = 0; next }
+        inblk && /^```$/ { if (n == 0) print tag; inblk = 0; next }
+        inblk && NF > 0 { n++ }
+    ' "$f")
+    if [[ -n "$hollow" ]]; then
+        while IFS= read -r t; do err "$f" "evidence block $t is empty"; done <<< "$hollow"
+    fi
+
+    # 5. Supersession linkage
+    if [[ "$status" == "SUPERSEDED" ]]; then
+        grep -qE '^\*\*Superseded-By:\*\* *[0-9]{4}' "$f" || \
+            err "$f" "SUPERSEDED status requires '**Superseded-By:** NNNN'"
+    fi
+
+    # 6. Published RFCs are immutable: a dirty working copy is a violation
+    if [[ "$status" == "PUBLISHED" ]] && command -v git >/dev/null 2>&1; then
+        if git -C "$(dirname "$f")" status --porcelain -- "$base" 2>/dev/null | grep -q .; then
+            err "$f" "PUBLISHED RFC has uncommitted modifications — publish a superseding RFC instead"
+        fi
+    fi
+}
+
+[[ $# -ge 1 ]] || { echo "usage: rfc-lint <rfc.md>..." >&2; exit 2; }
+for f in "$@"; do lint_file "$f"; done
+
+echo "rfc-lint: $ERRORS error(s), $WARNINGS warning(s)"
+[[ $ERRORS -eq 0 ]]

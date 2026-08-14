@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# rfc-tangle — extract embedded evidence blocks from a literate RFC.
+# Usage: rfc-tangle <rfc.md> [outdir]     (default outdir: ./conformance)
+# Each fenced block ```<type> @R-<slug> becomes <outdir>/<rfcbase>.<slug>.<type>
+# verbatim — the block's content IS the runner's native format (a moot block
+# becomes a .moot file, a transcript block a .transcript, etc.). Deterministic
+# runners consume the tangled files; this tool never interprets content.
+set -eu
+
+[[ $# -ge 1 ]] || { echo "usage: rfc-tangle <rfc.md> [outdir]" >&2; exit 2; }
+f="$1"; out="${2:-conformance}"
+[[ -f "$f" ]] || { echo "rfc-tangle: $f not found" >&2; exit 1; }
+base="$(basename "${f%.md}")"
+mkdir -p "$out"
+
+awk -v out="$out" -v base="$base" '
+    /^```[a-z-]+ @R-[a-z0-9-]+$/ {
+        type = $1; sub(/^```/, "", type)
+        slug = $2; sub(/^@R-/, "", slug)
+        dest = out "/" base "." slug "." type
+        inblk = 1; next
+    }
+    inblk && /^```$/ { inblk = 0; close(dest); print dest; next }
+    inblk { print $0 > dest }
+' "$f"

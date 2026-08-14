@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# rfc-search — find published internet RFCs as prior art while drafting.
+# Usage: rfc-search <regex terms>       (case-insensitive, matched per entry)
+# Searches the official RFC index (titles + metadata), cached 30 days.
+# Full-text search: https://datatracker.ietf.org (link, not automated here).
+set -eu
+
+CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/authoring-rfcs/rfc-index.txt"
+mkdir -p "$(dirname "$CACHE")"
+if ! [ -s "$CACHE" ] || ! find "$CACHE" -mtime -30 2>/dev/null | grep -q .; then
+    curl -fsSL https://www.rfc-editor.org/rfc-index.txt -o "$CACHE" || {
+        [ -s "$CACHE" ] || { echo "rfc-search: no cache and fetch failed" >&2; exit 1; }
+        echo "rfc-search: fetch failed, using stale cache" >&2
+    }
+fi
+
+[ $# -ge 1 ] || { echo "usage: rfc-search <regex terms>" >&2; exit 2; }
+
+# Index entries are blank-line-separated paragraphs starting with the number.
+# Case-insensitive via tolower on both sides (IGNORECASE is gawk-only;
+# this must run under BSD awk and mawk too). No {n} intervals for the same
+# reason: match a leading run of digits explicitly.
+awk -v pat="$(printf '%s' "$*" | tr '[:upper:]' '[:lower:]')" '
+    BEGIN { RS = "" }
+    $0 ~ /^[0-9][0-9][0-9][0-9]/ && tolower($0) ~ pat {
+        gsub(/[[:space:]]+/, " ")
+        # Trim the trailing status/format noise for scanability
+        sub(/ \(Format:.*/, "")
+        print "RFC " $0 "\n"
+    }
+' "$CACHE"
