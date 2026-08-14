@@ -38,6 +38,7 @@ problems=$(awk '
         for (s in term) if (s in outdeg) print "terminal " s " has outgoing transitions"
         for (s in states) if (!(s in term) && !(s in outdeg)) print "dead end: " s
         for (s in noted) if (!(s in states)) print "note references undeclared state " s
+        if ("timeout" in states) print "state name timeout is reserved"
         for (s in dl) {
             if (!(s in states)) { print "deadline references undeclared state " s; continue }
             if (s in term) { print "terminal state " s " cannot carry a deadline"; continue }

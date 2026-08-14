@@ -33,9 +33,12 @@ if [ -n "$second" ]; then
     fails=1
 fi
 
-# attribution: LLM markers in trailers or generated-with lines
+# attribution: LLM markers, anchored to trailer position — line-anchored
+# patterns in the message's final paragraph only, so body prose that
+# merely mentions the words is never a false positive
+trailers=$(printf '%s\n' "$msg" | awk 'NF { p = p $0 "\n"; next } { p = "" } END { printf "%s", p }')
 llm_found=0
-if printf '%s\n' "$msg" | grep -qiE '(co-authored-by|assisted-by):.*(claude|gpt|copilot|gemini|llm|anthropic|openai|agent)|generated with|🤖'; then
+if printf '%s\n' "$trailers" | grep -qiE '^(co-authored-by|assisted-by):.*(claude|gpt|copilot|gemini|llm|anthropic|openai|bot)|^generated with|^🤖'; then
     llm_found=1
 fi
 if [ "$REQ" = 1 ]; then

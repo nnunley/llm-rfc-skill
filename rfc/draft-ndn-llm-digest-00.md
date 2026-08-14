@@ -88,9 +88,13 @@ $ cmp a.out b.out
 `rfc-render-llm --verify <rfc> [digest]` MUST check, exiting nonzero on
 any violation (digest freshly generated when not supplied): the digest's
 marker set equals the source's kept-section marker set — no requirement
-lost, none invented; the digest opens only `abnf`/`fsm` fences; every
-line inside those fences exists verbatim in the source; and the digest
-does not exceed the source in size. Success is silent. [R-digest-verify]
+lost, none invented; every kept-section sentence bearing a BCP 14
+keyword survives, whitespace-normalized (extracted by the same sentence
+algorithm the generator uses, so the invariant tracks the generator's
+own unit of work); every kept-section evidence-table row survives
+verbatim; the digest opens only `abnf`/`fsm` fences; every line inside
+those fences exists verbatim in the source; and the digest does not
+exceed the source in size. Success is silent. [R-digest-verify]
 
 ```transcript @R-digest-verify
 $ printf '# draft-a-x-00: X\n\n**Status:** DRAFT\n\n## Specification\n\nIt MUST work. [R-alpha]\n' > d.md
@@ -100,6 +104,15 @@ $ rfc-render-llm d.md > dig.md
 $ grep -v "R-alpha" dig.md > bad.md
 $ rfc-render-llm --verify d.md bad.md
 digest missing marker: [R-alpha]
+digest missing keyword sentence: It MUST work
+? 1
+$ printf '# draft-a-y-00: Y\n\n**Status:** DRAFT\n\n## Specification\n\nServers MUST obey.\n\nClients omit the header as they MAY.\n\n<!-- evidence: @R-t -->\n| case | ok |\n|---|---|\n| a | yes |\nThe table MUST hold. [R-t]\n' > e.md
+$ rfc-render-llm e.md > edig.md
+$ grep -c "they MAY" edig.md
+1
+$ grep -v "^| a" edig.md > ebad.md
+$ rfc-render-llm --verify e.md ebad.md
+digest missing evidence row: | a | yes |
 ? 1
 ```
 
@@ -165,3 +178,8 @@ detectable by `--verify` against the source.
 - 2026-08-14: draft-00 created with the projector and verify mode
   implemented against it; all six series documents pass `--verify`,
   establishing the live-corpus-as-test-suite practice.
+- 2026-08-14: external-review fixes — verify gains the two invariants
+  the review demonstrated missing (keyword-sentence survival via the
+  generator's own sentence algorithm, and verbatim evidence-table-row
+  survival), and the keyword matcher takes MAY at a word boundary so a
+  sentence-final "MAY." is no longer dropped.

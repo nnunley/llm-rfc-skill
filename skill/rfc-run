@@ -87,6 +87,10 @@ if [ -n "$TYPE" ]; then
         echo "rfc-run: no adapter found for type $TYPE"
         exit 1
     }
+    if [ "$SANDBOX_FLAG" != none ] && [ "${RFC_SANDBOX:-}" = none ]; then
+        echo "rfc-run: the reserved name none is honored only from --sandbox"
+        exit 1
+    fi
     sbname="${SANDBOX_FLAG:-${RFC_SANDBOX:-}}"
     if [ -n "$sbname" ] && [ "$sbname" != none ]; then
         provider=$(resolve_sandbox "$sbname" "$SANDBOX_DIR") || {
@@ -107,11 +111,23 @@ for rfc in "$@"; do
     series_sandboxes="${SANDBOX_DIR:-$series_dir/sandboxes}"
 
     # sandbox selection: flag > env > series profile > none
+    # (the reserved name `none` is honored only from the --sandbox flag —
+    # a stale environment or profile cannot silently defeat the floor)
+    if [ "$SANDBOX_FLAG" != none ] && [ "${RFC_SANDBOX:-}" = none ]; then
+        echo "rfc-run: the reserved name none is honored only from --sandbox"
+        FAILS=$((FAILS + 1))
+        continue
+    fi
     PROFILE=()
     sbname="${SANDBOX_FLAG:-${RFC_SANDBOX:-}}"
     if [ -z "$sbname" ] && [ -f "$series_dir/sandbox" ] && read_profile "$series_dir/sandbox"; then
         sbname="${PROFILE[0]}"
         PROFILE=("${PROFILE[@]:1}")
+        if [ "$sbname" = none ]; then
+            echo "rfc-run: the reserved name none is honored only from --sandbox"
+            FAILS=$((FAILS + 1))
+            continue
+        fi
     fi
     provider=""
     if [ -n "$sbname" ] && [ "$sbname" != none ]; then

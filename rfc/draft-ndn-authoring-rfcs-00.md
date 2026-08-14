@@ -75,9 +75,10 @@ fence info string is reserved for future per-block strictness levels
 (e.g. strict alignment for state-machine tables and production rules) and
 is currently undefined.
 
-This document's transcripts have one addition to the sandbox contract: the
-runner provides `rfc-lint` and `rfc-tangle` on `PATH` for conformance
-checking against THIS document. One notation limit is normative: an
+The transcript runner provides the skill's own tools on `PATH` for every
+corpus it replays; this document's transcripts rely on that provision
+for `rfc-lint` and `rfc-tangle`, checking conformance against THIS
+document. One notation limit is normative: an
 expected-output line beginning `$ ` cannot be expressed literally (it reads
 as a command) — such output is asserted through a projection instead.
 
@@ -86,8 +87,12 @@ as a command) — such output is asserted through a projection instead.
 Unpublished documents MUST be named `draft-<author>-<slug>-NN.md` and
 published documents `NNNN-slug.md`, per the Formal Grammar; the document
 title line MUST repeat the identity (`# draft-...:` or `# RFC NNNN:`).
-Author-scoped draft names require no coordination between concurrent
-authors, human or agent. [R-identity]
+An author token containing hyphens separates from the slug with a DOUBLE
+hyphen (`draft-prime-agent--review-00.md`): parsing splits at the first
+`--` when present, otherwise at the first `-`, and a slug MUST NOT
+contain `--` — every name parses one way. Author-scoped draft names
+require no coordination between concurrent authors, human or agent.
+[R-identity]
 
 ```transcript @R-identity
 $ printf '# RFC 0001: X\n' > bad-name.md
@@ -100,11 +105,13 @@ $ rfc-lint bad-name.md >/dev/null 2>&1
 <!-- evidence: @R-identity -->
 | filename                     | valid |
 |------------------------------|-------|
-| draft-ndn-registry-00.md     | yes   |
-| draft-claude-registry-03.md  | yes   |
-| 0001-registry.md             | yes   |
-| registry-design.md           | no    |
-| draft-Ndn-registry-00.md     | no    |
+| draft-ndn-registry-00.md          | yes   |
+| draft-claude-registry-03.md       | yes   |
+| draft-prime-agent--registry-00.md | yes   |
+| 0001-registry.md                  | yes   |
+| registry-design.md                | no    |
+| draft-Ndn-registry-00.md          | no    |
+| draft---registry-00.md            | no    |
 
 ### Status machine
 
@@ -195,9 +202,12 @@ a default among the legal moves). An OPTIONAL `<instant>` uses the same
 second-resolution forms as `objections by` (bare date = midnight UTC;
 date with zone offset = midnight in that zone); a machine that describes
 a recurring process omits it, and the governing document supplies the
-concrete instant. A deadline on a terminal state, a handler that is not
-a declared transition, or a deadline line without a handler are all
-errors. [R-fsm-deadline]
+concrete instant. The state name `timeout` is RESERVED — it is the
+executor's timeout pseudo-target, and a machine declaring it would make
+a legal transition unreachable through the executor. A deadline on a
+terminal state, a handler that is not a declared transition, a deadline
+line without a handler, or a state named `timeout` are all errors.
+[R-fsm-deadline]
 
 ```transcript @R-fsm-deadline
 $ printf 'initial A\nA -> B\nterminal B\ndeadline A 2026-08-21T17:00:00Z -> B\n' > ok.fsm
@@ -210,6 +220,10 @@ deadline handler A -> C is not a declared transition
 $ printf 'initial A\nA -> B\nterminal B\ndeadline A\n' > nohandler.fsm
 $ rfc-run --type fsm nohandler.fsm
 not an fsm statement: deadline A
+? 1
+$ printf 'initial A\nA -> timeout\nterminal timeout\n' > shadow.fsm
+$ rfc-run --type fsm shadow.fsm
+state name timeout is reserved
 ? 1
 ```
 
@@ -525,7 +539,8 @@ per-repository.
 ## Formal Grammar
 
 ```abnf
-draft-file = %s"draft-" author "-" slug "-" 2DIGIT %s".md"
+draft-file = %s"draft-" ( author "-" / hyph-author "--" ) slug "-" 2DIGIT %s".md"
+hyph-author = author 1*( "-" author )   ; hyphenated identities take the double-hyphen separator
 rfc-file   = 4DIGIT "-" slug %s".md"
 author     = 1*( lower / DIGIT )
 slug       = 1*( lower / DIGIT / "-" )
@@ -706,3 +721,16 @@ constrained is excluded from judging its own conformance.
   disclosure [R-commit-attribution] (deterministic, rfc-commit-lint);
   a two-key read — a fresh-context LLM with the changeset, then the
   human — confirms the message narrates what happened, not the hunks.
+- 2026-08-14: hyphenated authors made expressible without ambiguity —
+  a hyphen-bearing author token separates from the slug with a double
+  hyphen (draft-prime-agent--review-00.md); slugs never contain "--";
+  every name parses one way. Chosen over constraining authors to
+  hyphen-free tokens (silent misparse risk) and a registered-author list
+  (reintroduces coordination).
+- 2026-08-14: external-review fixes — the state name timeout is reserved
+  in the fsm vocabulary (it shadowed the executor's pseudo-target,
+  making a declared transition unreachable); the transcript-runner PATH
+  provision is documented as a general contract rather than a
+  this-document addition; rfc-commit-lint's attribution scan anchors to
+  trailer position in the final paragraph, so body prose mentioning the
+  words is never a false positive.

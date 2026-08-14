@@ -12,9 +12,11 @@
 # Verify mode: rfc-render-llm --verify <rfc.md> [digest.md]
 # Deterministic invariants of the projection (digest freshly generated
 # when not supplied): the digest's [R-] marker set equals the source's
-# kept-section marker set (no requirement lost, none invented); only
-# abnf/fsm fences appear, and every line inside them exists verbatim in
-# the source; the digest never exceeds the source. Silent on success.
+# kept-section marker set (no requirement lost, none invented); every
+# kept-section keyword sentence survives (whitespace-normalized); every
+# kept-section evidence-table row survives verbatim; only abnf/fsm
+# fences appear, and every line inside them exists verbatim in the
+# source; the digest never exceeds the source. Silent on success.
 set -u
 
 [ $# -ge 1 ] || { echo "usage: rfc-render-llm [--verify] <rfc.md>..." >&2; exit 2; }
@@ -46,6 +48,73 @@ if [ "${1:-}" = "--verify" ]; then
     for m in $dig_m; do
         printf '%s\n' "$src_m" | grep -qF "$m" || { echo "digest has marker absent from source: $m"; fails=1; }
     done
+    # keyword sentences: extracted by the SAME algorithm the generator
+    # uses (paragraph accumulation, sentence split, keyword match), each
+    # must survive whitespace-normalized in the digest
+    norm_dig=$(tr -s '[:space:]' ' ' < "$dig")
+    while IFS= read -r sent; do
+        [ -n "$sent" ] || continue
+        s=$(printf '%s' "$sent" | tr -s '[:space:]' ' ')
+        case "$norm_dig" in
+            *"$s"*) ;;
+            *) echo "digest missing keyword sentence: $s"; fails=1 ;;
+        esac
+    done <<EOF
+$(awk '
+        /^```/ { flushpara(); inblk = !inblk; next }
+        inblk { next }
+        /^# / { next }
+        /^\*\*[A-Za-z-]+:\*\* / { if (!body) next }
+        /^## / {
+            flushpara(); body = 1
+            sec = $0; sub(/^## /, "", sec)
+            skip = (sec == "Changelog" || sec == "Motivation" || sec == "Abstract" || \
+                    sec == "Alternatives Considered" || sec == "References")
+            next
+        }
+        skip { next }
+        /^#{3,4} / { flushpara(); next }
+        /^The key words "MUST"/ { boiler = 1 }
+        boiler { if ($0 == "") boiler = 0; next }
+        /^<!-- *evidence:/ { flushpara(); intab = 1; next }
+        intab && /^\|/ { next }
+        intab && !/^\|/ { intab = 0 }
+        /^$/ { flushpara(); next }
+        { para = para " " $0 }
+        function flushpara(   n, i, s) {
+            if (para == "") return
+            sub(/^[[:space:]]+/, "", para)
+            n = split(para, sents, /\.([[:space:]]+|$)/)
+            for (i = 1; i <= n; i++) {
+                s = sents[i]
+                if (s ~ /(MUST|SHALL|SHOULD|REQUIRED|RECOMMENDED|OPTIONAL|MAY([^A-Z]|$))/)
+                    print s
+            }
+            para = ""
+        }
+        END { flushpara() }
+    ' "$src")
+EOF
+    # evidence-table rows in kept sections survive verbatim
+    while IFS= read -r row; do
+        [ -n "$row" ] || continue
+        grep -qxF "$row" "$dig" || { echo "digest missing evidence row: $row"; fails=1; }
+    done <<EOF
+$(awk '
+        /^```/ { inblk = !inblk; next }
+        inblk { next }
+        /^## / {
+            sec = $0; sub(/^## /, "", sec)
+            skip = (sec == "Changelog" || sec == "Motivation" || sec == "Abstract" || \
+                    sec == "Alternatives Considered" || sec == "References")
+            next
+        }
+        skip { next }
+        /^<!-- *evidence:/ { intab = 1; next }
+        intab && /^\|/ { print; next }
+        intab { intab = 0 }
+    ' "$src")
+EOF
     badf=$(grep -E '^```' "$dig" | grep -vE '^```$' | grep -vE '^```(abnf|fsm)( @R-[a-z0-9-]+)?$' || true)
     if [ -n "$badf" ]; then
         while IFS= read -r l; do echo "digest contains non-grammar fence: $l"; done <<< "$badf"
@@ -121,7 +190,7 @@ for f in "$@"; do
             out = ""
             for (i = 1; i <= n; i++) {
                 s = sents[i]
-                if (s ~ /(MUST|SHALL|SHOULD|REQUIRED|RECOMMENDED|MAY |OPTIONAL)/)
+                if (s ~ /(MUST|SHALL|SHOULD|REQUIRED|RECOMMENDED|OPTIONAL|MAY([^A-Z]|$))/)
                     out = out s ". "
             }
             sub(/ $/, "", out)

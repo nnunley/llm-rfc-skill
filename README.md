@@ -132,10 +132,23 @@ CI (the anti-backsliding wall — a series MUST run it):
 rfc-conformance:
   runs-on: ubuntu-latest
   steps:
-    - uses: actions/checkout@v3
-    - run: git clone --depth 1 https://github.com/nnunley/llm-rfc-skill /tmp/rfc
+    - uses: actions/checkout@v4
+    # pin the tooling to a reviewed commit — a verdict produced by moving
+    # tools is no verdict (update the SHA deliberately, as a reviewed change)
+    - run: |
+        git clone https://github.com/nnunley/llm-rfc-skill /tmp/rfc
+        git -C /tmp/rfc checkout fe51b9c
+    # lint gates every document
     - run: /tmp/rfc/skill/rfc-lint docs/rfc/draft-*.md docs/rfc/[0-9]*.md
-    - run: ls docs/rfc/[0-9]*.md >/dev/null 2>&1 && /tmp/rfc/skill/rfc-run docs/rfc/[0-9]*.md || echo "no published RFCs yet"
+    # published evidence is blocking
+    - run: |
+        if ls docs/rfc/[0-9]*.md >/dev/null 2>&1; then
+          /tmp/rfc/skill/rfc-run docs/rfc/[0-9]*.md
+        else
+          echo "no published RFCs yet"
+        fi
+    # drafts gate on their DECLARED corpus state (red only by declaration)
+    - run: /tmp/rfc/skill/rfc-run --expect docs/rfc/draft-*.md
 ```
 
 ## Tooling

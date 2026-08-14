@@ -102,7 +102,10 @@ provider. [R-profile-selection]
 Selection precedence, highest first: the `--sandbox NAME` flag, the
 `RFC_SANDBOX` environment variable, the series profile. The reserved name
 `none` explicitly disables wrapping — the only way a selected provider is
-ever skipped. [R-selection-precedence]
+ever skipped — and it is honored ONLY from the flag: an environment
+variable or profile naming `none` is a loud error, so one stale export
+in a CI environment cannot silently defeat a series' declared hygiene
+floor. [R-selection-precedence]
 
 ```transcript @R-profile-selection
 $ mkdir -p series/sandboxes series/adapters
@@ -128,6 +131,9 @@ $ printf 'x\n' > sample.probe
 $ RFC_SANDBOX=marker rfc-run --adapter-dir adapters --sandbox-dir sandboxes --type probe sample.probe
 ? 0
 $ RFC_SANDBOX=marker rfc-run --adapter-dir adapters --sandbox-dir sandboxes --sandbox none --type probe sample.probe
+? 1
+$ RFC_SANDBOX=none rfc-run --adapter-dir adapters --sandbox-dir sandboxes --type probe sample.probe
+rfc-run: the reserved name none is honored only from --sandbox
 ? 1
 ```
 
@@ -235,3 +241,6 @@ choice.
   `env-scrub` hygiene floor. Evidence is red until rfc-run gains the
   provider seam (spec-first; the transcripts above are the acceptance
   criteria).
+- 2026-08-14: external-review hardening — `none` is honored only from
+  the --sandbox flag; RFC_SANDBOX=none or a profile naming none is a
+  loud error rather than a silent defeat of the declared hygiene floor.

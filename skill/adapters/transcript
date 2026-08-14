@@ -38,6 +38,14 @@ replay() {
 }
 
 SELF_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+# the sandbox path is normative (spec'd logical path) and therefore
+# shared: take a lock so concurrent corpus runs fail loudly, never
+# silently clobber each other mid-replay
+if ! mkdir "$SANDBOX.lock" 2>/dev/null; then
+    echo "transcript: sandbox $SANDBOX busy (concurrent corpus run?) — stale lock: $SANDBOX.lock" >&2
+    exit 2
+fi
+trap 'rm -rf "$SANDBOX" "$SANDBOX.lock"' EXIT
 rm -rf "$SANDBOX" && mkdir -p "$SANDBOX"
 ( cd "$SANDBOX" && \
   export HOME="$SANDBOX" XDG_CONFIG_HOME="$SANDBOX/.config" GIT_CONFIG_NOSYSTEM=1 && \
@@ -45,6 +53,4 @@ rm -rf "$SANDBOX" && mkdir -p "$SANDBOX"
   git config --global user.name conformance >/dev/null 2>&1 && \
   git config --global user.email conformance@rfc >/dev/null 2>&1 && \
   replay )
-rc=$?
-rm -rf "$SANDBOX"
-exit $rc
+exit $?

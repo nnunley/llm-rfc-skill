@@ -168,3 +168,7 @@ files MUST NOT contain secrets or PII — state names only.
   (--state FILE), state file as validated path witness, progressive
   disclosure of the current stage only, timeout advance via the deadline
   handler.
+- 2026-08-14: the fsm vocabulary now reserves the state name `timeout`
+  (process BCP), closing the shadowing the session executor's
+  pseudo-target introduced: a machine can no longer declare a state the
+  executor cannot reach.
