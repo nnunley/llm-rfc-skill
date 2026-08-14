@@ -44,6 +44,10 @@ Three grants, by function:
   each RFC's own `Authors:` line — contributors publishing here are
   credited as themselves.
 - **Template** — `skill/template.md`: [CC0 / public domain](LICENSE-CC0).
+  The template is itself derived from IETF practice — RFC 7322 document
+  structure, BCP 14 boilerplate, conventions long predating this repo —
+  so most of it was never ours to license; CC0 dedicates the little that
+  is.
   The template exists to be copied into your documents; instantiating it
   creates **no derivative-work obligation, no attribution requirement, and
   no license carried into your RFC**.

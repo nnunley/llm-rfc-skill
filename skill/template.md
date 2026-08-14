@@ -1,3 +1,6 @@
+<!-- Structure and boilerplate derived from IETF practice (RFC 7322 style,
+     BCP 14/RFC 8174). Original guidance prose: CC0 — copy freely, owe nothing. -->
+
 # draft-author-slug-00: Title In Plain Words
 
 <!-- Unpublished: filename and this title are draft-<author>-<slug>-NN.
