@@ -387,6 +387,29 @@ lint_file() {
         na "fsm-witnesses"
     fi
 
+    # 4e2. Vacuous evidence: a transcript whose only commands are
+    # echo/printf/true/comments proves nothing but replays green — it
+    # asserts its own caption. Warn; judgment in review remains the
+    # primary catch (process, not just tooling).
+    local vacuous
+    vacuous=$(awk '
+        /^```transcript @R-[a-z0-9-]+$/ { tag = $2; inblk = 1; real = 0; next }
+        inblk && /^```$/ {
+            if (real == 0) print tag
+            inblk = 0; next
+        }
+        inblk && /^\$ / {
+            cmd = substr($0, 3)
+            sub(/^[[:space:]]+/, "", cmd)
+            if (cmd !~ /^(echo|printf|true|:|#)([[:space:]]|$)/) real = 1
+        }
+    ' "$f")
+    if [[ -n "$vacuous" ]]; then
+        while IFS= read -r t; do
+            warn "$f" "vacuous evidence: transcript $t contains only echo/printf/comment commands — it asserts its own caption, proving nothing"
+        done <<< "$vacuous"
+    fi
+
     # 4f. Hygiene: documents never reference local machines, secrets, or
     # PII-bearing real paths. Example data uses generic placeholders
     # (user, alice, bob, carol, example, you), which are allowed.
