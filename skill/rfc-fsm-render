@@ -29,8 +29,10 @@ mermaid)
             stnote[sid(nname)] = (sid(nname) in stnote) ? stnote[sid(nname)] "; " text : text
             next
         }
+        $1 == "deadline" { note($2); dl[sid($2)] = $NF; next }
         NF == 3 && $2 == "->" { note($1); note($3); edges[++n] = sid($1) " --> " sid($3); next }
         END {
+            for (s in dl) stnote[s] = ((s in stnote) ? stnote[s] "; " : "") "on timeout -> " dl[s]
             if (init != "") printf "    [*] --> %s\n", init
             for (i = 1; i <= n; i++) printf "    %s\n", edges[i]
             for (t in term) printf "    %s --> [*]\n", t
@@ -50,6 +52,7 @@ d2)
             printf "%s.tooltip: %s\n", nname, text
             next
         }
+        $1 == "deadline" { printf "%s -> %s: timeout\n", $2, $NF; next }
         NF == 3 && $2 == "->" { printf "%s -> %s\n", $1, $3 }
     ' "$f"
     ;;

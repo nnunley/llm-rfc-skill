@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# rfc-render-llm — project an RFC to a token-minimal digest for LLM context.
+# Usage: rfc-render-llm <rfc.md>...
+# Deterministic projection keeping the normative surface: identity/masthead,
+# every sentence bearing a BCP 14 keyword or an [R-] marker, ABNF and fsm
+# blocks verbatim (already compact), and witness tables. Drops narrative
+# prose, evidence transcripts (verifier fodder, not consumer guidance), and
+# the Changelog. The digest cites the full document; it never replaces it.
+set -u
+
+[ $# -ge 1 ] || { echo "usage: rfc-render-llm <rfc.md>..." >&2; exit 2; }
+
+for f in "$@"; do
+    [ -f "$f" ] || { echo "rfc-render-llm: $f not found" >&2; exit 1; }
+    awk '
+        # --- fenced blocks: keep abnf and fsm verbatim, drop the rest ---
+        /^```/ {
+            if (inblk) { inblk = 0; keepblk = 0; next }
+            inblk = 1
+            keepblk = ($0 ~ /^```(abnf|fsm)/)
+            if (keepblk) print $0
+            next
+        }
+        inblk { if (keepblk) print; next }
+
+        # --- masthead + title ---
+        /^# /                 { print; next }
+        /^\*\*[A-Za-z-]+:\*\* / { if (!body) { print; next } }
+        /^## /                { sec = $0; sub(/^## /, "", sec); body = 1 }
+
+        # --- drop non-normative sections wholesale ---
+        sec == "Changelog" || sec == "Motivation" || sec == "Abstract" { next }
+
+        # --- witness/evidence tables survive (compact rule surfaces) ---
+        /^<!-- *evidence:/ { print; intab = 1; next }
+        intab && /^\|/     { print; next }
+        intab && !/^\|/    { intab = 0 }
+
+        # --- paragraph accumulation: emit sentences that carry normative
+        #     weight (BCP 14 keyword or requirement marker) ---
+        /^#{2,4} / { flushpara(); print; next }
+        /^$/       { flushpara(); next }
+        { para = para " " $0 }
+
+        function flushpara(   n, i, s, out) {
+            if (para == "") return
+            sub(/^[[:space:]]+/, "", para)
+            # a marked requirement keeps its whole paragraph (the marker
+            # binds to its context); elsewhere keep only keyword sentences
+            if (para ~ /\[R-[a-z0-9-]+\]/) { print para; para = ""; return }
+            n = split(para, sents, /\.([[:space:]]+|$)/)
+            out = ""
+            for (i = 1; i <= n; i++) {
+                s = sents[i]
+                if (s ~ /(MUST|SHALL|SHOULD|REQUIRED|RECOMMENDED|MAY |OPTIONAL)/)
+                    out = out s ". "
+            }
+            if (out != "") print out
+            para = ""
+        }
+        END { flushpara() }
+    ' "$f"
+done

@@ -3,6 +3,7 @@
 # Usage:
 #   rfc-fsm-exec <file.fsm> <state>            query: guidance + permitted moves
 #   rfc-fsm-exec <file.fsm> <state> <target>   guard: exit 0 legal, 1 violation
+#   rfc-fsm-exec <file.fsm> <state> timeout    guard: resolve the deadline handler
 # The machine is the spec's verified transition relation; this tool derives
 # an agent's permissions in the current stage from it — guidance comes from
 # the document, never from memory. Exit 2 on usage/unknown-state errors.
@@ -24,6 +25,11 @@ awk -v cur="$cur" -v target="$target" '
         notes[nname] = (nname in notes) ? notes[nname] "; " text : text
         next
     }
+    $1 == "deadline" && ((NF == 4 && $3 == "->") || (NF == 5 && $4 == "->")) {
+        dlt[$2] = (NF == 4 ? $4 : $5)
+        if (NF == 5) dlts[$2] = $3
+        next
+    }
     NF == 3 && $2 == "->" { states[$1] = 1; states[$3] = 1; adj[$1] = adj[$1] " " $3; next }
     END {
         if (!(cur in states)) {
@@ -31,6 +37,15 @@ awk -v cur="$cur" -v target="$target" '
             exit 2
         }
         n = split(adj[cur], nxt, " ")
+        if (target == "timeout") {
+            if (!(cur in dlt)) {
+                printf "VIOLATION: %s carries no deadline — timeout is undefined here\n", cur
+                exit 1
+            }
+            printf "LEGAL: %s -> %s (timeout handler%s)\n", cur, dlt[cur], (cur in dlts ? "; deadline " dlts[cur] : "")
+            if (dlt[cur] in notes) printf "entering %s: %s\n", dlt[cur], notes[dlt[cur]]
+            exit 0
+        }
         if (target != "") {
             for (i = 1; i <= n; i++) if (nxt[i] == target) {
                 printf "LEGAL: %s -> %s\n", cur, target
@@ -43,6 +58,7 @@ awk -v cur="$cur" -v target="$target" '
         }
         printf "state: %s%s%s\n", cur, (cur == init ? " (initial)" : ""), ((cur in term) ? " (terminal)" : "")
         printf "guidance: %s\n", (cur in notes ? notes[cur] : "(none recorded in the machine)")
+        if (cur in dlt) printf "deadline: %son timeout -> %s\n", (cur in dlts ? dlts[cur] " — " : ""), dlt[cur]
         if (cur in term) {
             print "permitted transitions: none — this state is terminal"
         } else {

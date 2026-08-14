@@ -7,6 +7,9 @@
      At publication both become RFC NNNN (number taken from index.md). -->
 
 **Status:** DRAFT
+<!-- Optional: declare expected evidence state (absent = green):
+**Corpus:** red (spec-first — evidence is the acceptance criteria)
+-->
 **Category:** Standards-Track (normative) | Informational | Experimental
 **Authors:** Name <email>
 **Date:** YYYY-MM-DD

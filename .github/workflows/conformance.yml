@@ -34,10 +34,13 @@ jobs:
           fi
         shell: bash
 
-      - name: Run rfc-run on drafts (reported, not blocking — drafts may be spec-first red)
+      - name: Verify draft corpus declarations (blocking — red only by declaration)
         run: |
           shopt -s nullglob
-          for file in rfc/draft-*.md; do
-            skill/rfc-run "$file" || echo "::warning::draft corpus not green: $file"
-          done
+          set -- rfc/draft-*.md
+          if [ $# -gt 0 ]; then
+            skill/rfc-run --expect "$@"
+          else
+            echo "No drafts"
+          fi
         shell: bash

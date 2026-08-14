@@ -104,7 +104,11 @@ tangled file and exits 0/1. Choose types by least indirection:
   state transitions); runner = thin row adapter.
 - `abnf` — the ∀ statement of syntax; pair it with witness rows (concrete
   valid/invalid strings) as its checkable shadow.
-- `fsm` — state machines (`initial` / `A -> B` / `terminal ...`), validated
+- `fsm` — state machines (`initial` / `A -> B` / `terminal ...`, plus
+  optional `deadline <state> [<instant>] -> <target>` where the timeout
+  handler is REQUIRED and must be a declared transition; instants are
+  second-resolution — bare date = midnight UTC, date+offset = midnight in
+  that zone), validated
   for single initial, reachability, terminal closure, and dead ends;
   allowed/forbidden transition witness tables are cross-checked against the
   machine; mermaid/D2 displays are derived via `rfc-fsm-render`, never
@@ -121,6 +125,11 @@ silently regress another's requirements. Supersession retires an RFC's
 evidence; an `Updates:` RFC replaces only the requirement IDs it names.
 IDs are permanent once published: plans, commits, and later RFCs cite them,
 so obligations accumulate instead of resetting with each conversation.
+
+Drafts declare their expected corpus state with an optional masthead
+header `**Corpus:** green|red (note)` (absent = green); `rfc-run --expect`
+verifies the declaration in both directions and CI gates drafts on it —
+red only by declaration, never by surprise. Published RFCs must be green.
 
 ## Plan breakdown
 

@@ -79,7 +79,7 @@ lint_file() {
     # review windows; here the window must at least be explicit)
     if [[ "$status" == "LAST-CALL" ]]; then
         grep -qiE "objections by [0-9]{4}-[0-9]{2}-[0-9]{2}" "$f" || \
-            err "$f" "LAST-CALL requires a Changelog line 'objections by YYYY-MM-DD'"
+            err "$f" "LAST-CALL requires a Changelog deadline 'objections by YYYY-MM-DDTHH:MM:SSZ' (bare date = midnight UTC; date with zone offset = midnight in that zone)"
         ck "deadline"
         # Consensus record (rfcbot-derived): consent is registered, never
         # inferred. LAST-CALL requires a reviewer table; dispositions are
@@ -113,6 +113,22 @@ lint_file() {
     else
         na "deadline"
         na "consensus"
+    fi
+
+    # 2e. Corpus declaration: a draft's expected replay state is declared,
+    # never discovered (rfc-run --expect verifies both directions).
+    local corpus cval
+    corpus="$(sed -n 's/^\*\*Corpus:\*\* *//p' "$f" | head -1)"
+    if [[ -n "$corpus" ]]; then
+        cval="${corpus%% *}"
+        [[ "$cval" =~ ^(green|red)$ ]] || \
+            err "$f" "Corpus must be 'green' or 'red' (optional parenthetical note) — got '$corpus'"
+        if [[ "$cval" == "red" && "$status" =~ ^(PUBLISHED|SUPERSEDED|HISTORIC)$ ]]; then
+            err "$f" "published RFCs cannot declare 'Corpus: red' — publication requires green evidence"
+        fi
+        ck "corpus($cval)"
+    else
+        na "corpus"
     fi
 
     # 2d. Updates:/Obsoletes: must reference published RFC numbers
@@ -284,6 +300,7 @@ lint_file() {
     nfsm=$(grep -c '^```fsm' "$f")
     if [[ "$nfsm" -eq 0 ]]; then na "fsm"; else ck "fsm($nfsm block(s))"; fi
     fsm_problems=$(awk '
+        BEGIN { dre = "^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9](T[0-9][0-9]:[0-9][0-9]:[0-9][0-9](Z|[+-][0-9][0-9]:[0-9][0-9])|[+-][0-9][0-9]:[0-9][0-9])?$" }
         /^```fsm/ { infsm = 1; init = ""; delete_arrays(); next }
         infsm && /^```$/ { infsm = 0; finish(); next }
         !infsm { next }
@@ -307,6 +324,12 @@ lint_file() {
                 noted[nname] = 1
                 next
             }
+            if (w[i0] == "deadline" && ((n - i0 + 1 == 4 && w[i0+2] == "->") || (n - i0 + 1 == 5 && w[i0+3] == "->" && w[i0+2] ~ dre))) {
+                s = w[i0+1]; t = (n - i0 + 1 == 4 ? w[i0+3] : w[i0+4])
+                if (s in dl) print "duplicate deadline for " s
+                dl[s] = t
+                next
+            }
             if (n - i0 + 1 == 3 && w[i0+1] == "->") {
                 from = w[i0]; to = w[i0+2]
                 states[from] = 1; states[to] = 1
@@ -320,7 +343,7 @@ lint_file() {
         }
         function delete_arrays(   k) {
             split("", states); split("", term); split("", trans)
-            split("", outdeg); split("", adj); split("", seen); split("", q); split("", noted)
+            split("", outdeg); split("", adj); split("", seen); split("", q); split("", noted); split("", dl)
         }
         function finish(   qi, qn, j, m, a, s) {
             if (init == "") { print "missing initial state"; return }
@@ -334,6 +357,11 @@ lint_file() {
             for (s in term) if (s in outdeg) print "terminal state " s " has outgoing transitions"
             for (s in states) if (!(s in term) && !(s in outdeg)) print "state " s " is a dead end (no outgoing transitions, not terminal)"
             for (s in noted) if (!(s in states)) print "note references undeclared state " s
+            for (s in dl) {
+                if (!(s in states)) { print "deadline references undeclared state " s; continue }
+                if (s in term) { print "terminal state " s " cannot carry a deadline"; continue }
+                if (!((s SUBSEP dl[s]) in trans)) print "deadline handler " s " -> " dl[s] " is not a declared transition"
+            }
         }
         END { if (infsm) print "unclosed fsm block" }
     ' "$f")

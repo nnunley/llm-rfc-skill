@@ -66,6 +66,7 @@ ADAPTER_DIR=""
 SANDBOX_DIR=""
 SANDBOX_FLAG=""
 TYPE=""
+EXPECT=0
 ARGS=()
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -73,6 +74,7 @@ while [ $# -gt 0 ]; do
         --sandbox-dir) SANDBOX_DIR="$2"; shift 2 ;;
         --sandbox)     SANDBOX_FLAG="$2"; shift 2 ;;
         --type)        TYPE="$2"; shift 2 ;;
+        --expect)      EXPECT=1; shift ;;
         *)             ARGS+=("$1"); shift ;;
     esac
 done
@@ -120,6 +122,7 @@ for rfc in "$@"; do
         fi
     fi
 
+    rfc_start_fails=$FAILS
     tangled=$(mktemp -d)
     "$SKILL_DIR/rfc-tangle" "$rfc" "$tangled" >/dev/null
     found=0
@@ -146,6 +149,30 @@ for rfc in "$@"; do
     done
     [ "$found" = 1 ] || echo "rfc-run: no tangled evidence in $rfc"
     rm -rf "$tangled"
+
+    # --expect: the document declares its corpus state (**Corpus:** green|red,
+    # absent = green); a stale declaration in EITHER direction is a failure.
+    if [ "$EXPECT" = 1 ]; then
+        declared=$(sed -n 's/^\*\*Corpus:\*\* *//p' "$rfc" | head -1)
+        declared="${declared%% *}"
+        declared="${declared:-green}"
+        rfc_fails=$((FAILS - rfc_start_fails))
+        if [ "$declared" = red ]; then
+            if [ "$rfc_fails" -gt 0 ]; then
+                echo "EXPECT ok $rfc — corpus red as declared"
+                FAILS=$rfc_start_fails
+            else
+                echo "EXPECT MISMATCH $rfc — declared red but corpus is green"
+                FAILS=$((FAILS + 1))
+            fi
+        else
+            if [ "$rfc_fails" -gt 0 ]; then
+                echo "EXPECT MISMATCH $rfc — declared green but corpus is red"
+            else
+                echo "EXPECT ok $rfc — corpus green as declared"
+            fi
+        fi
+    fi
 done
 
 echo "rfc-run: $FAILS failing block(s)"

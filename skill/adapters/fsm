@@ -1,15 +1,23 @@
 #!/usr/bin/env bash
 # fsm — structural adapter for tangled state machines: single initial,
-# reachability, terminal closure, dead ends, duplicates, note references.
+# reachability, terminal closure, dead ends, duplicates, note references,
+# deadlines (optional instant, REQUIRED timeout handler that must be a
+# declared transition; terminal states cannot carry one).
 # Deterministic; exit 0 conform / 1 violate with findings on stdout.
 set -u
 f="${1:?usage: fsm <file>}"
 problems=$(awk '
+    BEGIN { dre = "^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9](T[0-9][0-9]:[0-9][0-9]:[0-9][0-9](Z|[+-][0-9][0-9]:[0-9][0-9])|[+-][0-9][0-9]:[0-9][0-9])?$" }
     { sub(/[[:space:]]*;.*$/, "") }
     /^[[:space:]]*$/ { next }
     $1 == "initial" && NF == 2 { if (init != "") print "duplicate initial"; init = $2; states[$2] = 1; next }
     $1 == "terminal" { for (i = 2; i <= NF; i++) { term[$i] = 1; states[$i] = 1 } next }
     $1 == "note" { nname = $2; sub(/:$/, "", nname); noted[nname] = 1; next }
+    $1 == "deadline" && ((NF == 4 && $3 == "->") || (NF == 5 && $4 == "->" && $3 ~ dre)) {
+        s = $2; t = (NF == 4 ? $4 : $5)
+        if (s in dl) print "duplicate deadline for " s
+        dl[s] = t; next
+    }
     NF == 3 && $2 == "->" {
         states[$1] = 1; states[$3] = 1
         key = $1 SUBSEP $3
@@ -30,6 +38,11 @@ problems=$(awk '
         for (s in term) if (s in outdeg) print "terminal " s " has outgoing transitions"
         for (s in states) if (!(s in term) && !(s in outdeg)) print "dead end: " s
         for (s in noted) if (!(s in states)) print "note references undeclared state " s
+        for (s in dl) {
+            if (!(s in states)) { print "deadline references undeclared state " s; continue }
+            if (s in term) { print "terminal state " s " cannot carry a deadline"; continue }
+            if (!((s SUBSEP dl[s]) in trans)) print "deadline handler " s " -> " dl[s] " is not a declared transition"
+        }
     }
 ' "$f")
 if [ -n "$problems" ]; then printf '%s\n' "$problems"; exit 1; fi

@@ -185,6 +185,68 @@ $ rfc-lint draft-a-x-00.md 2>&1 | grep -c "unreachable"
 1
 ```
 
+A state MAY carry a deadline: `deadline <state> [<instant>] -> <target>`.
+Deadlines are process state separate from any particular lifecycle status
+— any non-terminal state of any machine MAY bear one. A deadline line
+REQUIRES its timeout handler: the `-> <target>` names the transition the
+process takes when the deadline expires, and it MUST be one of the
+state's declared transitions (a timeout is never a new edge — it selects
+a default among the legal moves). An OPTIONAL `<instant>` uses the same
+second-resolution forms as `objections by` (bare date = midnight UTC;
+date with zone offset = midnight in that zone); a machine that describes
+a recurring process omits it, and the governing document supplies the
+concrete instant. A deadline on a terminal state, a handler that is not
+a declared transition, or a deadline line without a handler are all
+errors. [R-fsm-deadline]
+
+```transcript @R-fsm-deadline
+$ printf 'initial A\nA -> B\nterminal B\ndeadline A 2026-08-21T17:00:00Z -> B\n' > ok.fsm
+$ rfc-run --type fsm ok.fsm
+? 0
+$ printf 'initial A\nA -> B\nB -> C\nterminal C\ndeadline A -> C\n' > bad.fsm
+$ rfc-run --type fsm bad.fsm
+deadline handler A -> C is not a declared transition
+? 1
+$ printf 'initial A\nA -> B\nterminal B\ndeadline A\n' > nohandler.fsm
+$ rfc-run --type fsm nohandler.fsm
+not an fsm statement: deadline A
+? 1
+```
+
+The fsm notation is exactly this grammar; a line matching no production
+is an error, and the structural rules above (single initial, reachability,
+terminal closure, deadline handler legality) apply on top of it.
+[R-fsm-grammar]
+
+```abnf
+fsm        = *( fsm-line LF )
+fsm-line   = [ ws ] [ stmt ] [ ws ] [ comment ]
+stmt       = initial / transition / terminals / note-stmt / deadline
+initial    = %s"initial" ws state
+transition = state ws "->" ws state
+terminals  = %s"terminal" 1*( ws state )
+note-stmt  = %s"note" ws state ":" ws note-text
+deadline   = %s"deadline" ws state [ ws instant ] ws "->" ws state
+state      = 1*( ALPHA / DIGIT / "-" / "_" )
+instant    = date [ time / zone ]           ; bare date = midnight UTC
+date       = 4DIGIT "-" 2DIGIT "-" 2DIGIT   ; date+zone = midnight there
+time       = %s"T" 2DIGIT ":" 2DIGIT ":" 2DIGIT ( %s"Z" / zone )
+zone       = ( "+" / "-" ) 2DIGIT ":" 2DIGIT
+note-text  = 1*( VCHAR / WSP )
+comment    = ";" *( VCHAR / WSP )
+ws         = 1*WSP
+```
+
+```transcript @R-fsm-grammar
+$ printf 'initial A\nA -> B\ndeadline A 2026-01-01 -> B\nnote A: waiting\nterminal B\n' > full.fsm
+$ rfc-run --type fsm full.fsm
+? 0
+$ printf 'initial A\nA -> B\nA => C\nterminal B\n' > bad.fsm
+$ rfc-run --type fsm bad.fsm
+not an fsm statement: A => C
+? 1
+```
+
 ### Embedded evidence
 
 A provable requirement carries a `[R-<slug>]` marker; its evidence is
@@ -228,7 +290,12 @@ frozen: modification in the working tree is a lint error, and the sole
 permitted edit is setting `SUPERSEDED` with its `**Superseded-By:**` link
 when a successor publishes. [R-immutable] A document in `SUPERSEDED`
 status MUST name its successor. [R-supersede] A document in `LAST-CALL`
-MUST state its objection deadline in the Changelog. [R-lastcall]
+MUST state its objection deadline in the Changelog: `objections by
+<instant>`, resolved to second precision — the canonical form is
+`YYYY-MM-DDTHH:MM:SSZ` (numeric zone offsets permitted); a bare
+`YYYY-MM-DD` denotes midnight UTC of that date, and `YYYY-MM-DD±HH:MM`
+denotes midnight in that zone. Every accepted form names one unambiguous
+second. [R-lastcall]
 `LAST-CALL` is not a one-way gate: the document returns to `DRAFT` when
 substantive objections stand unaddressed at the deadline, or when the
 call is retracted as premature (a last call asserts a settled design;
@@ -246,6 +313,37 @@ a published RFC's evidence MUST NOT merge; draft evidence MAY be red
 The series's `.github/workflows/conformance.yml` implements this
 contract.
 
+A draft's corpus state is declared, never discovered: the masthead header
+`**Corpus:** green|red (parenthetical note)` states the expected replay result
+(absent means green), and `rfc-run --expect` verifies the declaration
+against reality in BOTH directions — a green declaration whose corpus
+fails and a red declaration whose corpus passes are equally stale, and
+both are errors. CI SHALL gate drafts with `--expect`: a draft MAY be red
+only by declaration, never by surprise, so a regression in a working
+draft's evidence breaks immediately rather than at the publication gate.
+Published RFCs MUST NOT declare red (lint-enforced — the publication gate
+requires green). [R-corpus-declared]
+
+```transcript @R-corpus-declared
+$ mkdir -p adapters
+$ printf '#!/bin/sh\nexit 1\n' > adapters/always-red
+$ chmod +x adapters/always-red
+$ printf '# t\n\n**Corpus:** red (spec-first)\n\n\140\140\140always-red @R-x\nx\n\140\140\140\n' > t.md
+$ rfc-run --expect t.md
+FAIL t.x.always-red
+EXPECT ok t.md — corpus red as declared
+rfc-run: 0 failing block(s)
+? 0
+$ printf '#!/bin/sh\nexit 0\n' > adapters/always-green
+$ chmod +x adapters/always-green
+$ printf '# t2\n\n**Corpus:** red (stale)\n\n\140\140\140always-green @R-x\nx\n\140\140\140\n' > t2.md
+$ rfc-run --expect t2.md
+PASS t2.x.always-green
+EXPECT MISMATCH t2.md — declared red but corpus is green
+rfc-run: 1 failing block(s)
+? 1
+```
+
 ```fsm @R-lifecycle
 initial DRAFT
 DRAFT -> LAST-CALL
@@ -260,6 +358,7 @@ POSTPONED -> DRAFT         ; resume
 POSTPONED -> WITHDRAWN     ; terminate
 PUBLISHED -> SUPERSEDED
 PUBLISHED -> HISTORIC
+deadline LAST-CALL -> PUBLISHED    ; expiry executes the silence default; standing concerns preempt
 terminal SUPERSEDED HISTORIC WITHDRAWN
 note DRAFT: revise in place, Changelog each change, corpus can be red
 note LAST-CALL: consensus table + deadline required, concerns block
@@ -308,7 +407,7 @@ $ rfc-lint 0001-x.md 2>&1 | grep -c "requires '\*\*Superseded-By:\*\*"
 
 ```transcript @R-lastcall
 $ printf '# draft-a-x-00: X\n**Status:** LAST-CALL\n' > draft-a-x-00.md
-$ rfc-lint draft-a-x-00.md 2>&1 | grep -c "objections by YYYY-MM-DD"
+$ rfc-lint draft-a-x-00.md 2>&1 | grep -c "objections by YYYY-MM-DDTHH:MM:SSZ"
 1
 ```
 
@@ -509,3 +608,20 @@ constrained is excluded from judging its own conformance.
   becomes executable: rfc-fsm-exec derives an agent's stage permissions
   (query) and guards transitions (exit code) directly from the verified
   machine — process guidance from the document, never from memory.
+- 2026-08-14: deadlines separated from LAST-CALL and given second
+  resolution — the fsm vocabulary gains optional `deadline <state>
+  [<instant>] -> <target>` lines with a REQUIRED timeout handler that
+  must be a declared transition [R-fsm-deadline]; the lifecycle machine
+  declares LAST-CALL's expiry default (silence-default publish). Deadline
+  instants resolve to one unambiguous second: bare date = midnight UTC,
+  date with zone offset = midnight in that zone, canonical form
+  YYYY-MM-DDTHH:MM:SSZ.
+- 2026-08-14: corpus state made a declaration, not a discovery — drafts
+  carry a visible `**Corpus:** green|red` indicator (absent = green),
+  `rfc-run --expect` verifies it in both directions, and CI gates drafts
+  on the declaration so working evidence cannot rot silently until the
+  publication gate. [R-corpus-declared]
+- 2026-08-14: fsm notation given its ABNF (the process eating its own
+  doctrine — syntax defined by a document is expressed in ABNF with
+  witnesses) [R-fsm-grammar], covering the deadline extension and instant
+  forms.
