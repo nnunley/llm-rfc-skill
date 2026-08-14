@@ -52,16 +52,34 @@ when, and only when, they appear in all capitals, as shown here.
 
 ### Evidence conventions
 
-Transcripts in this document follow the sandbox conventions established in
-the registry RFC's evidence contract, with one addition: the runner
-provides `rfc-lint` and `rfc-tangle` on `PATH`. The sandbox neutralizes
-system-level git configuration as well as global (`GIT_CONFIG_NOSYSTEM=1`);
-host excludes files and system options never reach a transcript. Fixture
-documents are created inline; assertions project deterministic output with
-`grep -c` and assert exit status with `? N` (absent means 0). One notation
-limit is normative: an expected-output line beginning `$ ` cannot be
-expressed literally (it reads as a command) — such output is asserted
-through a projection instead.
+Each transcript block in this document is an independent conformance test
+executed under replay-and-diff. The runner provides, per block, a fresh
+sandbox: an empty directory whose logical path is exactly `/tmp/gi-rfc`
+(the shell's working directory at block start), `HOME` and `XDG_CONFIG_HOME`
+redirected inside the sandbox (empty global git config, no host excludes),
+system git config neutralized (`GIT_CONFIG_NOSYSTEM=1`), a configured git
+identity, and no inter-block state. Blocks construct every piece of state
+they reference — no block depends on another block, on this repository, or
+on the author's machine.
+
+Notation: lines beginning `$ ` are commands (shell state persists within a
+block); other lines are the expected output, compared byte-exactly; a line
+`? N` asserts that the immediately preceding command exited with status N,
+and absent a `?` line the status is asserted to be 0. Where real output
+embeds generated identifiers or timestamps, the transcript asserts through
+a deterministic projection (`grep -c`, `cut`, `sort`) — the projection is
+part of the evidence. Runners on systems where `/tmp` is a symlink
+normalize exactly the sandbox-root prefix between its physical and logical
+spellings; no other substitution exists. A `fidelity=` modifier on the
+fence info string is reserved for future per-block strictness levels
+(e.g. strict alignment for state-machine tables and production rules) and
+is currently undefined.
+
+This document's transcripts have one addition to the sandbox contract: the
+runner provides `rfc-lint` and `rfc-tangle` on `PATH` for conformance
+checking against THIS document. One notation limit is normative: an
+expected-output line beginning `$ ` cannot be expressed literally (it reads
+as a command) — such output is asserted through a projection instead.
 
 ### Document identity
 
@@ -210,6 +228,14 @@ proceeds to `PUBLISHED` on rough consensus, returns to `DRAFT`, or ends
 The complete lifecycle transition relation is exactly the machine below;
 a status change outside it is a process violation. [R-lifecycle]
 
+A conformance corpus MUST be maintained in continuous integration: a series
+SHALL run `rfc-lint` over every RFC and draft, and SHALL run `rfc-run` over
+every `PUBLISHED` RFC's evidence as part of each CI job. A change that breaks
+a published RFC's evidence MUST NOT merge; draft evidence MAY be red
+(spec-first drafts describe unimplemented behavior and are allowed to fail).
+The series's `.github/workflows/conformance.yml` implements this
+contract.
+
 ```fsm @R-lifecycle
 initial DRAFT
 DRAFT -> LAST-CALL
@@ -276,6 +302,20 @@ projects. Consensus is rough (RFC 7282): objections are addressed, not
 necessarily withdrawn, and humans adjudicate when contested. Any
 participant, human or agent, is welcome as author, reviewer, or objector.
 
+Published RFCs are cited across repository series as `<series>/<NNNN>` where
+`<series>` is the hosting repository name (e.g. `llm-rfc-skill/0001`);
+drafts are cited by their full draft name, which is globally unique by
+author and slug convention (e.g. `draft-ndn-authoring-rfcs-00`). Within a
+single series, bare `NNNN` or `draft-*-NN` suffices.
+
+An RFC lives in the repository whose behavior it governs (its "home series").
+Project RFCs describing features, formats, or interfaces of a specific
+codebase belong in that project's own `docs/rfc/` or `rfc/` series — they
+are never centralized into another repository. This repository carries ONLY
+cross-project process and practice documents (BCPs like this one). The
+`<series>/<NNNN>` citation form exists precisely because series are
+per-repository.
+
 ## Formal Grammar
 
 ```abnf
@@ -329,15 +369,20 @@ humans-adjudicate as the entire appeals process.
 ## Security Considerations
 
 Evidence transcripts are arbitrary shell commands executed by conformance
-runners: running a series' corpus is running its authors' code. Runners
-MUST execute evidence only in disposable sandboxes (fresh working
-directory, isolated `HOME`, no ambient credentials), and adopting another
-party's RFC series into CI is a supply-chain decision — review its
-evidence blocks as you would its build scripts. Requirement markers and
-evidence tags influence what CI enforces; because pairing is bidirectional
-and lint-checked, silently dropping an obligation requires a visible
-document edit, which review and the frozen-once-published rule are
-designed to catch. The prohibition on LLM verification is a security
+runners: running a series' corpus is running its authors' code. The runner
+provides hygiene-level sandbox isolation (fresh working directory, isolated
+`HOME`, neutralized git config) to prevent inter-block leakage and host
+contamination; this sandbox is NOT a security boundary. When executing
+evidence from outside one's trust domain, security isolation (container,
+VM, or throwaway host) MUST be deployed at the execution layer by the
+deployment — the runner does not provide it. Adopting another party's RFC
+series into CI is a supply-chain decision: review its evidence blocks as
+you would its build scripts.
+
+Requirement markers and evidence tags influence what CI enforces; because
+pairing is bidirectional and lint-checked, silently dropping an obligation
+requires a visible document edit, which review and the frozen-once-published
+rule are designed to catch. The prohibition on LLM verification is a security
 property as much as a methodological one: the class of system being
 constrained is excluded from judging its own conformance.
 
@@ -386,3 +431,24 @@ constrained is excluded from judging its own conformance.
   (including LAST-CALL -> DRAFT, the transition exercised before it was
   specified), and fsm validation itself is a proven requirement [R-fsm].
   Displays (mermaid/D2) are derived by rfc-fsm-render, never authored.
+- 2026-08-14: dependency inversion fixed — Evidence conventions moved from
+  registry RFC into this BCP as canonical [Finding 1]. Normative content
+  from draft-ndn-multi-project-registry-02's section merged with BCP-specific
+  additions (rfc-lint/rfc-tangle on PATH) and notation limit, eliminating
+  process BCP normatively depending on feature draft in another repo.
+- 2026-08-14: conformance corpus CI made normative [Finding 2]. Lifecycle
+  section now prescribes rfc-lint over all documents and rfc-run over all
+  published RFC evidence in CI as a SHALL requirement; changes breaking
+  published evidence MUST NOT merge (draft evidence allowed to fail).
+  Conformance workflow created in .github/workflows/conformance.yml.
+- 2026-08-14: Security Considerations clarified [Finding 3]. Sandbox
+  distinguished as hygiene isolation (preventing inter-block leakage), NOT
+  security boundary; security isolation (container/VM/throwaway host) MUST be
+  deployed at execution layer by deployment. rfc-run comment header updated.
+- 2026-08-14: cross-series citation form added to Practice [Finding 4].
+  Published RFCs cited as series/NNNN (e.g. llm-rfc-skill/0001); drafts by
+  full draft name; bare form within single series.
+- 2026-08-14: locality rule added to Practice — RFCs live in the repository
+  whose behavior they govern; project-specific RFCs belong in that project's
+  own rfc/ series, never centralized. This repository carries only
+  cross-project process/skill RFCs. README.md clarified accordingly.
