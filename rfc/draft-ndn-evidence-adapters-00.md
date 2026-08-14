@@ -66,9 +66,15 @@ engine-specific escapes. What a block states is intent in its vocabulary;
 how intent is checked belongs to the adapter. [R-adapter-contract]
 
 ```transcript @R-adapter-contract
+$ mkdir -p adapters
+$ printf '#!/bin/sh\ngrep -q "^! error" "$1"\n' > adapters/gi-session
+$ chmod +x adapters/gi-session
 $ printf 'add tracker /tmp/gi-rfc/a\nadd tracker /tmp/gi-rfc/b\n! error already registered\n' > sample.gi-session
 $ rfc-run --adapter-dir adapters --type gi-session sample.gi-session
 ? 0
+$ printf 'add tracker /tmp/gi-rfc/a\n' > sample2.gi-session
+$ rfc-run --adapter-dir adapters --type gi-session sample2.gi-session
+? 1
 ```
 
 ### Adapter resolution
@@ -81,6 +87,7 @@ hard error, never a silent skip. [R-adapter-resolution]
 ```transcript @R-adapter-resolution
 $ printf 'anything\n' > sample.unknowntype
 $ rfc-run --type unknowntype sample.unknowntype
+rfc-run: no adapter found for type unknowntype
 ? 1
 ```
 
@@ -210,3 +217,8 @@ hygiene sandbox remains the floor, not a security boundary.
   sessions; FitNesse SLIM script tables as the engine-decoupling
   precedent), with optional fsm binding: a flow as a path witness walked
   through a declared machine.
+- 2026-08-14: evidence corrected during implementation — the contract
+  transcript now self-provisions its demonstration adapter (the original
+  referenced an unprovisioned directory, caught by implementing against
+  it), asserts both verdict directions, and the resolution transcript
+  asserts the error message. Corpus green with rfc-run adapter dispatch.

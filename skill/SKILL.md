@@ -86,9 +86,13 @@ into the type's native file for its runner. An evidence *type* is just a
 name plus a **runner contract**: a deterministic command that takes the
 tangled file and exits 0/1. Choose types by least indirection:
 
-- `transcript` — command + expected output; runner = `rfc-run <rfc.md>`
-  (replays each block in a fresh sandbox: cwd/HOME/XDG at `/tmp/gi-rfc`,
-  `GIT_CONFIG_NOSYSTEM=1`, git identity set). The default for CLI behavior.
+- Evidence dispatches through **adapters** (draft-ndn-evidence-adapters-00):
+  `rfc-run` resolves each tangled block's type via RFC_ADAPTER_PATH ->
+  series-local `adapters/` -> built-ins, and the adapter owns all engine
+  and environment concerns. Built-ins: `transcript` (bootstrap: shell
+  replay in the hygiene sandbox) and `fsm` (structural validation).
+  Prefer thin declarative vocabularies over raw shell once a domain
+  accumulates evidence.
 - Project session formats (e.g. mooR's `moot`) — register the existing
   runner; the fenced block is the file, no transliteration.
 - Evidence tables — one row per case for rule surfaces (validity matrices,

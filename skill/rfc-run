@@ -1,72 +1,85 @@
 #!/usr/bin/env bash
-# rfc-run — tangle an RFC's transcript evidence and replay each block in a
-# fresh hygiene sandbox (the deterministic runner for the `transcript`
-# evidence type). This sandbox provides environment isolation (HOME,
-# config), NOT a security boundary; security isolation (container, VM,
-# throwaway host) must be deployed at the execution layer by the deployment.
-# Usage: rfc-run <rfc.md>...        exit 1 if any block fails
-# Hygiene sandbox per block (per the evidence conventions): cwd + HOME +
-# XDG_CONFIG_HOME at /tmp/gi-rfc, GIT_CONFIG_NOSYSTEM=1, git identity set.
-# Notation: '$ cmd' runs; '? N' asserts exit status (absent = 0); other
-# lines are expected output, byte-exact.
+# rfc-run — execute an RFC's evidence corpus through adapters.
+#
+# Corpus mode:   rfc-run <rfc.md>...
+#   Tangles each document's tagged evidence blocks and dispatches every
+#   file to the adapter for its type. Exit 1 if any block fails.
+# Adapter mode:  rfc-run [--adapter-dir DIR] --type T <file>
+#   Resolves the adapter for T and executes it on one file; the adapter's
+#   exit status is the verdict (passthrough).
+#
+# Adapter resolution, per draft-ndn-evidence-adapters-00: the environment
+# override RFC_ADAPTER_PATH (colon-separated dirs) -> series-local
+# adapters/ (the --adapter-dir argument, or <rfc dir>/adapters in corpus
+# mode) -> the tooling's built-in adapters/. Resolution failure for a
+# typed block is a hard error, never a silent skip.
+#
+# Adapters own environment concerns. The built-in `transcript` adapter's
+# sandbox is hygiene, not a security boundary — isolate foreign corpora
+# at the deployment layer.
 set -u
 
 SKILL_DIR="$(cd "$(dirname "$0")" && pwd)"
-SANDBOX=/tmp/gi-rfc
 FAILS=0
 
-replay_block() {
-    local f="$1" fails=0 expected="" last_exit=0 last_out="" line cmd want
-    flush() {
-        if [ "$last_out" != "$(printf '%s' "$expected")" ]; then
-            echo "DIFF $(basename "$f"):"
-            printf -- '--want--\n%s\n--got--\n%s\n' "$expected" "$last_out"
-            fails=1
-        fi
-        expected=""
-    }
-    while IFS= read -r line || [ -n "$line" ]; do
-        case "$line" in
-            '$ '*) flush
-                   cmd="${line#\$ }"
-                   last_out="$(eval "$cmd" 2>&1)"; last_exit=$? ;;
-            '? '*) flush
-                   want="${line#? }"
-                   [ "$last_exit" = "$want" ] || { echo "EXIT $(basename "$f"): want $want got $last_exit"; fails=1; }
-                   last_exit=0 ;;
-            *)     expected="${expected:+$expected
-}$line" ;;
-        esac
-    done < "$f"
-    flush
-    [ "$last_exit" = 0 ] || { echo "EXIT $(basename "$f"): want 0 got $last_exit"; fails=1; }
-    return $fails
+resolve_adapter() {
+    local t="$1" series_dir="$2" IFS=':' d
+    for d in ${RFC_ADAPTER_PATH:-}; do
+        [ -n "$d" ] && [ -x "$d/$t" ] && { printf '%s' "$d/$t"; return 0; }
+    done
+    [ -n "$series_dir" ] && [ -x "$series_dir/$t" ] && { printf '%s' "$series_dir/$t"; return 0; }
+    [ -x "$SKILL_DIR/adapters/$t" ] && { printf '%s' "$SKILL_DIR/adapters/$t"; return 0; }
+    return 1
 }
 
-[ $# -ge 1 ] || { echo "usage: rfc-run <rfc.md>..." >&2; exit 2; }
+# ---- adapter mode ----
+ADAPTER_DIR=""
+TYPE=""
+ARGS=()
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --adapter-dir) ADAPTER_DIR="$2"; shift 2 ;;
+        --type)        TYPE="$2"; shift 2 ;;
+        *)             ARGS+=("$1"); shift ;;
+    esac
+done
+set -- "${ARGS[@]:-}"
+
+if [ -n "$TYPE" ]; then
+    [ $# -eq 1 ] || { echo "usage: rfc-run [--adapter-dir DIR] --type T <file>" >&2; exit 2; }
+    adapter=$(resolve_adapter "$TYPE" "$ADAPTER_DIR") || {
+        echo "rfc-run: no adapter found for type $TYPE"
+        exit 1
+    }
+    exec "$adapter" "$1"
+fi
+
+# ---- corpus mode ----
+[ $# -ge 1 ] || { echo "usage: rfc-run <rfc.md>... | rfc-run [--adapter-dir DIR] --type T <file>" >&2; exit 2; }
 
 for rfc in "$@"; do
+    series_adapters="$(cd "$(dirname "$rfc")" 2>/dev/null && pwd)/adapters"
     tangled=$(mktemp -d)
     "$SKILL_DIR/rfc-tangle" "$rfc" "$tangled" >/dev/null
     found=0
-    for t in "$tangled"/*.transcript; do
+    for t in "$tangled"/*; do
         [ -e "$t" ] || continue
         found=1
-        rm -rf "$SANDBOX" && mkdir -p "$SANDBOX"
-        if ( cd "$SANDBOX" && \
-             export HOME="$SANDBOX" XDG_CONFIG_HOME="$SANDBOX/.config" GIT_CONFIG_NOSYSTEM=1 && \
-             export PATH="$SKILL_DIR:$PATH" && \
-             git config --global user.name conformance >/dev/null 2>&1 && \
-             git config --global user.email conformance@rfc >/dev/null 2>&1 && \
-             replay_block "$t" ); then
+        type="${t##*.}"
+        if ! adapter=$(resolve_adapter "$type" "$series_adapters"); then
+            echo "FAIL $(basename "$t") — no adapter found for type $type"
+            FAILS=$((FAILS + 1))
+            continue
+        fi
+        if "$adapter" "$t"; then
             echo "PASS $(basename "$t")"
         else
             echo "FAIL $(basename "$t")"
             FAILS=$((FAILS + 1))
         fi
     done
-    [ "$found" = 1 ] || echo "rfc-run: no transcript evidence in $rfc"
-    rm -rf "$tangled" "$SANDBOX"
+    [ "$found" = 1 ] || echo "rfc-run: no tangled evidence in $rfc"
+    rm -rf "$tangled"
 done
 
 echo "rfc-run: $FAILS failing block(s)"
