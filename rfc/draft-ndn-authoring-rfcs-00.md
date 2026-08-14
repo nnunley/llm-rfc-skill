@@ -334,3 +334,7 @@ constrained is excluded from judging its own conformance.
 - 2026-08-14: returned to DRAFT — the last call was premature (the document
   is still under active revision; a last call asserts a settled design).
   Review remains welcome as ordinary draft review.
+- 2026-08-14: lifecycle gap found in review — LAST-CALL had no specified
+  outbound transitions (the same day's premature-call retraction was
+  therefore unspecified behavior). LAST-CALL -> DRAFT | PUBLISHED |
+  WITHDRAWN now explicit.
