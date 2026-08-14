@@ -1,0 +1,7 @@
+# Normalize text; pin the executable tools to LF so a Windows checkout with
+# core.autocrlf=true cannot CRLF-break bash ($'\r': command not found).
+* text=auto
+skill/rfc-* text eol=lf
+skill/adapters/* text eol=lf
+*.sh text eol=lf
+*.awk text eol=lf
