@@ -7,7 +7,7 @@
 
 ## Abstract
 
-Adversarial review is a pre-publication review phase for RFC drafts that uses agent judgment to find design flaws before publication gates them. This specification codifies the practice as adoptable process machinery: reality-check-first protocol, severity-ranked findings presented one at a time, resolution recorded in the draft's Changelog. The practice is derived from PAAD (Curtis "Ovid" Poe, v1.11.0). This document specifies the protocol for human and agent reviewers, clarifies the distinction between discovery (agent judgment) and conformance (deterministic verification), and gates publication on the RFC process's evidence requirements, not on adversarial review findings.
+Adversarial review is a pre-publication review phase for RFC drafts that uses agent judgment to find design flaws before publication gates them. This specification codifies the practice as adoptable process machinery: reality-check-first protocol, severity-ranked findings presented one at a time, resolution recorded in the draft's Changelog. The practice draws on two lineages: PAAD (Curtis "Ovid" Poe, v1.11.0) — a collection of processes, of which the pushback skill sources the per-reviewer protocol and the agentic-* skills define specialist dispatch — and Jesse Vincent's PAR (prime-radiant), the same-prompt redundant-dispatch form. This document specifies the protocol for human and agent reviewers, clarifies the distinction between discovery (agent judgment) and conformance (deterministic verification), and gates publication on the RFC process's evidence requirements, not on adversarial review findings.
 
 ## Motivation
 
@@ -31,27 +31,88 @@ when, and only when, they appear in all capitals, as shown here.
 - **Discovery** — the process of finding what is wrong (the domain of agent judgment and adversarial review).
 - **Conformance** — the process of verifying that artifacts keep their promises (the domain of deterministic verification and evidence replay).
 - **Reviewer** — a human or agent conducting adversarial review; may be the document author or a third party.
+- **Parallel adversarial review (PAR)** — Jesse Vincent's design
+  (prime-radiant): a one-shot quality GATE, not a loop — two or more
+  independent reviewers dispatched once with the SAME prompt, no shared
+  context, competitive framing, findings aggregated by union. Redundancy
+  is the instrument: the same finding from identically-tasked reviewers
+  is the high-confidence signal. Any looping (re-review after revision)
+  belongs to the process that invokes the gate.
+- **Specialist dispatch** — PAAD's design (the agentic-* skills):
+  parallel reviewers with DIFFERENT specialized prompts, one per
+  dimension (structure, coupling, security, ...). Diversity is the
+  instrument: specialists surface failure modes no shared prompt would
+  reach, and their findings are largely disjoint by design.
+- **Review loop** — the larger process specified here, which dispatches
+  either form (or both) and consolidates and adjudicates their findings
+  before any reach the author. The per-reviewer phase protocol is a tool
+  used inside it.
+- **Consolidation** — the union of all reviewers' findings, severity
+  taken as the worst assigned. Duplicate handling follows the dispatch
+  form: under PAR (same prompt) a duplicate is the confidence signal;
+  under specialist dispatch (different prompts) duplicates across
+  specialists are incidental and overlap signals a boundary-crossing
+  finding worth extra scrutiny.
+- **Adjudication** — per-claim validation against the artifact itself:
+  each consolidated finding is checked for reproducibility and
+  substantiation, and a claim that cannot be validated is dropped, never
+  presented. Disagreement between reviewers is resolved by evidence, not
+  authority.
 
 ## Specification
 
-### Adversarial Review Protocol
+### The Review Loop
 
 Every RFC draft MUST receive at least one adversarial review pass before entering LAST-CALL. Fast-track publications SHOULD receive a review pass scaled to the change's stakes and scope — a single-line fix might warrant a lightweight pass, while a normative redesign deserves a full protocol run.
 
-The protocol proceeds through the following state machine:
+The larger loop dispatches independent reviewers, consolidates their
+findings, and adjudicates every claim before the author sees any of it.
+The dispatch form is chosen at intake: PAR (same prompt, redundancy as
+confidence — Jesse Vincent's design) or specialist dispatch (different
+prompts per dimension, diversity as reach — PAAD's design), or both when
+stakes warrant. With a single reviewer (lightweight pass) consolidation
+is the identity, but adjudication is REQUIRED regardless of reviewer
+count — plausible but unsubstantiated claims die there, not in front of
+the author.
+
+```fsm
+initial INTAKE
+INTAKE -> PARALLEL_REVIEW
+PARALLEL_REVIEW -> CONSOLIDATION
+CONSOLIDATION -> ADJUDICATION
+ADJUDICATION -> PRESENTATION
+PRESENTATION -> REVIEW_LOOP
+REVIEW_LOOP -> RESOLUTION
+REVIEW_LOOP -> PARALLEL_REVIEW    ; substantive revision triggers re-review
+REVIEW_LOOP -> PRESENTATION       ; next finding
+RESOLUTION -> DONE
+terminal DONE
+note INTAKE: identify the artifact and stakes — choose dispatch form (PAR same-prompt, specialist different-prompts, or both) and reviewer count
+note PARALLEL_REVIEW: independent reviewers, no shared context — each runs the phase protocol under its assigned prompt
+note CONSOLIDATION: union of findings — severity = worst assigned — duplicates read per dispatch form (PAR: confidence, specialist: boundary-crossing)
+note ADJUDICATION: validate each claim against the artifact — unsubstantiated claims are dropped, never presented
+note PRESENTATION: one adjudicated finding at a time, severity order — the author may stop at any point
+note REVIEW_LOOP: record the disposition, then next finding, re-review, or resolve
+note RESOLUTION: decisions recorded in the Changelog
+```
+
+### The Per-Reviewer Phase Protocol
+
+Each reviewer dispatched in PARALLEL_REVIEW independently runs this
+protocol (derived from PAAD's pushback flow) and ends by REPORTING its
+findings into consolidation — a reviewer never presents to the author:
 
 ```fsm
 initial INTAKE
 INTAKE -> REALITY_CHECK
 REALITY_CHECK -> SCOPE_SHAPE
 SCOPE_SHAPE -> DETAILED_FINDINGS
-DETAILED_FINDINGS -> PRESENTATION
-PRESENTATION -> REVIEW_LOOP
-REVIEW_LOOP -> RESOLUTION
-REVIEW_LOOP -> SCOPE_SHAPE
-REVIEW_LOOP -> PRESENTATION
-RESOLUTION -> DONE
-terminal DONE
+DETAILED_FINDINGS -> REPORT
+terminal REPORT
+note REALITY_CHECK: verify the draft's assumptions against current repository state
+note SCOPE_SHAPE: cohesion and size before detail
+note DETAILED_FINDINGS: categorized, severity-ranked findings
+note REPORT: findings handed to consolidation, nothing withheld, nothing presented
 ```
 
 #### Phase 1: Reality Check
@@ -88,21 +149,33 @@ Analyze the draft across these categories, ranked by impact on publication succe
 
 Rank all findings by severity (most impactful first).
 
-#### Phase 4: Issue Presentation
+### Consolidation and Adjudication
 
-Present findings one at a time to the document author, in severity order.
+Consolidation merges the reviewers' reports: identical findings collapse
+to one carrying high confidence; unique findings survive on their own;
+severity is the worst any reviewer assigned. No finding is discarded at
+this stage — consolidation organizes, it does not judge.
 
-For each finding:
-1. State the problem clearly.
-2. Present concrete options from best to worst.
-3. Include a recommendation and brief explanation for each option.
-4. Wait for the author's response before presenting the next finding.
+Adjudication judges. Each consolidated claim is validated against the
+artifact itself: does the cited text say what the claim says it says,
+does the conflict reproduce, does the missing thing actually not exist?
+A claim that cannot be substantiated is dropped and the drop is logged
+with its reason (the verification pass of PAAD's agentic-review is the
+prior art: findings verified to filter false positives before anyone
+acts on them). The adjudicator MUST be distinct from the reviewers
+whose claims it judges (fresh context — a reviewer adjudicating its own
+finding inherits its own framing). Only adjudicated findings proceed.
 
-The author can say "good enough" or "stop" at any point to end the review.
+### Presentation and Resolution
 
-#### Phase 5: Resolution
+Present adjudicated findings one at a time to the document author, in
+severity order: state the problem, offer concrete options best to worst
+with a recommendation, and wait for the author's response before the
+next finding. The author can say "good enough" or "stop" at any point.
 
-For each addressed finding, record the author's decision in the draft's Changelog. This creates a durable record of what was reviewed and what the author chose to do about it.
+For each addressed finding, record the author's decision in the draft's
+Changelog — a durable record of what was reviewed, what was dropped in
+adjudication and why, and what the author chose to do.
 
 ### Placement in the RFC Lifecycle
 
@@ -139,7 +212,8 @@ Rejected. Documenting adversarial review as an informational technique (e.g., in
 
 ## References
 
-- Curtis "Ovid" Poe, **PAAD** (Practical Architecture and Development) — the source repository is https://github.com/Ovid/paad (reviewed at commit 149926aa231e, v1.11.0). The pushback skill in PAAD implements the adversarial review protocol specified in this document.
+- Curtis "Ovid" Poe, **PAAD** (Practical Architecture and Development) — the source repository is https://github.com/Ovid/paad (reviewed at commit 149926aa231e, v1.11.0). PAAD is a collection of processes, two of which this document draws on: the **pushback** skill is the source of the per-reviewer phase protocol, and the **agentic-review** subskill — parallel SPECIALIST reviewers with different prompts per dimension, findings verified to filter false positives, severity-ranked reporting — is the specialist-dispatch form and the prior art for the adjudication stage.
+- Jesse Vincent, **PAR** (parallel adversarial review) — the same-prompt redundant-dispatch form, as designed in prime-radiant's iterative-development methodology. https://github.com/prime-radiant-inc/iterative-development (reviewed as installed from prime-radiant-inc/prime-radiant-marketplace at commit 49a45efb72af); see also draft-claude-iterative-development-00.
 - draft-ndn-authoring-rfcs-00, "The RFC Process for Human–LLM Specification Authoring" — the parent process BCP that this practice complements. Discovery (adversarial review) and conformance (evidence verification) are complementary gates, not redundant.
 - RFC 7282, "On Consensus and Humming in the IETF" — adversarial review is one instrument in the consensus-building process; rough consensus and running code remain the arbiter.
 - RFC 2026, RFC 6410 — RFC categories and process maturity stages; Experimental category permits provisional adoption of new practices.
@@ -147,3 +221,23 @@ Rejected. Documenting adversarial review as an informational technique (e.g., in
 ## Changelog
 
 - 2026-08-14: draft-00 created. Codified adversarial review protocol as adoptable practice (discovery instrument for RFC drafting, distinct from deterministic conformance verification). Specified phases: reality check (upfront showstopper detection), scope shape (cohesion and size), detailed findings (six categories ranked by severity), one-at-a-time presentation with options, resolution recorded in Changelog. Placed in lifecycle: MUST complete before LAST-CALL; SHOULD complete for fast-track. Clarified discovery/conformance doctrine: agent judgment is discovery; determinism is conformance; both required; neither substitutes; LLMs never sit in verification loop. Derived from PAAD (Curtis "Ovid" Poe, v1.11.0), pushback skill. Field evidence: protocol ran twice on RFC drafts 2026-08-14, surfaced critical findings each time (non-replayable evidence syntax; unspecified state transitions). Specified FSM for protocol phases with realistic state transitions (loop-back for continue, early-stop, restart-on-split, terminal done). Addressed security (reviewer access to sensitive repository content; bad-faith findings). Rejected alternatives: direct BCP amendment (practices join as RFCs, promoted by decision) and review-as-documentation (provides guidance but no machinery). Experimental status: provisional adoption pending evidence at scale; future decision will promote to BCP if durable.
+- 2026-08-14: restructured on review — the review loop separated from
+  the PAAD-derived phase protocol, which is one reviewer's tool inside
+  it. The loop machine gains CONSOLIDATION (union, worst
+  severity) and ADJUDICATION (per-claim validation by a fresh-context
+  adjudicator; unsubstantiated claims dropped and logged) between the
+  parallel reviewers and the author; the per-reviewer machine ends at
+  REPORT and never presents. Both machines carry stage notes for the
+  executor.
+- 2026-08-14: attribution corrected on author review — PAAD is a
+  collection of processes, not one protocol: pushback sources the
+  per-reviewer phase protocol, and the agentic-review subskill (parallel
+  specialists, verification filtering false positives) is prior art for
+  the loop's verification stage.
+- 2026-08-14: second correction on author review — PAR and specialist
+  dispatch are DIFFERENT parallelism designs, previously conflated: PAR
+  (Jesse Vincent, prime-radiant) dispatches the SAME prompt and reads
+  redundant agreement as confidence; PAAD's agentic-* skills dispatch
+  DIFFERENT specialized prompts and buy reach through diversity. The
+  review loop now names both as intake-selectable dispatch forms with
+  form-dependent duplicate semantics in consolidation.
