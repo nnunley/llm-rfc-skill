@@ -1,37 +1,153 @@
 # llm-rfc-skill
 
-An RFC process for **one or more humans and one or more LLM agents** to
-co-author software specifications: numbered, immutable-once-published
-documents with BCP 14 requirement language, embedded machine-verifiable
-evidence (literate transcripts, tables, ABNF + witnesses), and a
-cumulative conformance corpus that stops agents from regressing
-previously established requirements.
+**A process for humans and LLM agents to design software together with
+less slop** — specifications with durable identity, formal requirement
+language, and machine-verifiable evidence, so that what was decided stays
+decided and what was promised stays checkable.
 
-This repository hosts the **process and skill itself** — process-scoped
-BCPs and practice documents are published in its `rfc/` series.
-Project-specific RFCs (features, formats, interfaces of a codebase)
-belong in each project's own `docs/rfc/` or `rfc/` series; they are
-never centralized here.
+## The problem
 
-- `skill/` — the agent skill: process (`SKILL.md`), document template,
-  and deterministic tooling (`rfc-lint`, `rfc-tangle`, `rfc-run`,
-  `rfc-search`).
-- `rfc/` — this project's process/skill RFC series. The process is
-  self-hosting: `rfc/draft-ndn-authoring-rfcs-00.md` specifies it as a
-  BCP whose evidence replays green against the tooling.
+LLM-assisted design fails in characteristic ways. Agents produce confident,
+plausible prose that verifies nothing. Requirements agreed in one
+conversation are invisible to the next context window, so agents quietly
+regress decisions that were already made. Design documents drift from
+implementations with no alarm attached. And "looks done" — the natural
+stopping point for a language model — is not the same thing as *is done*.
 
-## Install
+This repo is a countermeasure: an RFC process adapted from fifty years of
+standards practice (IETF lifecycle and style, W3C implementation gating,
+Rust's mechanized consensus, TC39 staging) and rebuilt for mixed
+human/LLM authorship around one law:
 
-For Claude Code: `cp -r skill ~/.claude/skills/authoring-rfcs`
+> **Dual verifiability.** Every conformance artifact must be checkable by
+> a person at a glance AND by a deterministic tool. LLMs author; they
+> never verify.
 
-Other runtimes: any agent that reads `SKILL.md`-style instructions can use
-it; the documents are plain markdown and outlive the tooling.
+## How it works
 
-## Verify
+1. **Draft under your own name.** `rfc/draft-<author>-<slug>-00.md` —
+   author-scoped names need no coordination, so any number of humans and
+   agents draft concurrently without collisions. Numbers are assigned
+   only at publication (the series `index.md` is the allocation lock).
+2. **Interview before writing.** The process forbids drafting from
+   unasked questions: research prior art, then elicit requirements from
+   the humans who hold them, one question at a time, until answers stop
+   changing the design.
+3. **Requirements are formal and provable.** Normative sentences use
+   BCP 14 keywords (MUST/SHOULD/MAY — lowercase lookalikes are flagged).
+   A provable requirement carries a stable marker, proven by evidence
+   embedded right beside it:
+
+   ~~~markdown
+   The registry MUST reject duplicate names. [R-no-dup-names]
+
+   ```transcript @R-no-dup-names
+   $ git issue repo add api /elsewhere
+   Error: 'api' is already registered; use --force to replace
+   ? 1
+   ```
+   ~~~
+
+   Evidence types by least indirection: session **transcripts** (replayed
+   byte-exact in a sandbox), **tables** for rule surfaces, **ABNF** with
+   valid/invalid witnesses for syntax, **fsm** state machines validated
+   for reachability and dead ends, with allowed/forbidden transition
+   witnesses cross-checked against the machine. Mermaid/D2 diagrams are
+   derived from verified sources, never drawn by hand.
+4. **Lint is a gate, not a suggestion.** `rfc-lint` enforces identity,
+   lifecycle, structure, keyword discipline, and marker⇄evidence pairing
+   both directions — and enumerates what it checked, so a clean run is an
+   auditable claim, not silence.
+5. **Two publication tracks.** Fast track (the default): draft → lint →
+   publish under lazy consensus — same-day for routine decisions. Full
+   track (multiple veto-holders, changed published behavior, security
+   boundaries, cross-project standards): a LAST-CALL window with a
+   deadline and a **registered consensus table** — consent is recorded
+   per reviewer, never inferred from silence, and concerns block.
+6. **Publication requires green evidence.** A spec-first draft keeps its
+   red corpus while DRAFT (the transcripts *are* the acceptance
+   criteria); it publishes only once implementation turns them green.
+   Published RFCs are frozen — change means a superseding draft, so
+   history is never rewritten.
+7. **The corpus is the anti-slop wall.** CI replays the evidence of ALL
+   published RFCs on every change. An agent heads-down on today's feature
+   cannot silently regress last month's promise — the wall goes red.
+
+## Usage patterns
+
+- **Solo + agent (most common).** Day-to-day design decisions go fast
+  track: the agent interviews you, drafts, lints, you read, it publishes.
+  Ten minutes for a decision that stays decided.
+- **Spec-first features.** Draft the RFC with deliberately red evidence,
+  then hand implementation to any agent with "make the corpus green" as
+  the finish line — acceptance criteria that cannot be argued with.
+- **Team + agents.** Full track: reviewers (human or agent) land in the
+  consensus table; a real objection becomes a competing draft under the
+  objector's own name rather than a comment thread.
+- **Cross-project conventions.** Practice documents take the BCP
+  category. An RFC lives in the repository whose behavior it governs —
+  project RFCs stay in their projects; this repo's series carries only
+  process documents (its own BCP is the first).
+- **Retrofit.** Adopt in an existing repo by writing the RFC for the next
+  contested decision — not by back-filling history.
+
+## Installation
+
+**The skill (Claude Code):**
 
 ```
-skill/rfc-lint rfc/draft-ndn-authoring-rfcs-00.md   # structure: 0 errors
-skill/rfc-run  rfc/draft-ndn-authoring-rfcs-00.md   # evidence: replays green
+git clone https://github.com/nnunley/llm-rfc-skill
+cp -r llm-rfc-skill/skill ~/.claude/skills/authoring-rfcs
+```
+
+Other runtimes: any agent that follows `SKILL.md`-style instructions can
+run the process; the tooling is dependency-free bash + awk (BSD and GNU),
+and the documents are plain markdown that outlive the tooling.
+
+**A repo adopting the process:**
+
+```
+mkdir -p docs/rfc          # or rfc/ — either is blessed
+printf '# RFC Index\n\n## Published\n\n(none — next: 0001)\n\n## Drafts\n' > docs/rfc/index.md
+```
+
+CI (the anti-backsliding wall — a series MUST run it):
+
+```yaml
+rfc-conformance:
+  runs-on: ubuntu-latest
+  steps:
+    - uses: actions/checkout@v3
+    - run: git clone --depth 1 https://github.com/nnunley/llm-rfc-skill /tmp/rfc
+    - run: /tmp/rfc/skill/rfc-lint docs/rfc/draft-*.md docs/rfc/[0-9]*.md
+    - run: ls docs/rfc/[0-9]*.md >/dev/null 2>&1 && /tmp/rfc/skill/rfc-run docs/rfc/[0-9]*.md || echo "no published RFCs yet"
+```
+
+## Tooling
+
+| Tool | Purpose |
+|---|---|
+| `rfc-lint` | Structure, lifecycle, formal language, evidence pairing; enumerates checked vs n/a |
+| `rfc-run` | Tangle + replay transcript evidence in a hygiene sandbox (not a security boundary — isolate foreign corpora yourself) |
+| `rfc-tangle` | Extract evidence blocks verbatim for any runner |
+| `rfc-search` | Prior-art search over the internet RFC index — cite standards, don't re-derive them |
+| `rfc-fsm-render` | Derive mermaid/D2 diagrams from verified fsm blocks |
+
+## Status
+
+The process is specified by its own BCP —
+[`rfc/draft-ndn-authoring-rfcs-00.md`](rfc/draft-ndn-authoring-rfcs-00.md)
+— written in its own format, linted by its own tooling, with its own
+evidence replaying green (`skill/rfc-run rfc/draft-*.md`). It is a
+**DRAFT**: review and objections are welcome
+([#1](https://github.com/nnunley/llm-rfc-skill/issues/1)), and the honest
+way to object is a competing draft.
+
+## Layout
+
+```
+rfc/      the process's own RFC series (process/practice documents only)
+skill/    the agent skill: SKILL.md, template.md, and the five tools
 ```
 
 ## License and attribution
