@@ -411,6 +411,78 @@ $ rfc-lint draft-a-x-00.md 2>&1 | grep -c "objections by YYYY-MM-DDTHH:MM:SSZ"
 1
 ```
 
+### Commit discipline
+
+A commit that records a decision accepted by a human collaborator is the
+decision's entry into history, and its message is checked twice — once by
+a tool, once by a person, the dual-verifiability split applied to the
+commit itself.
+
+The deterministic half: the message MUST conform to Conventional Commits
+v1.0.0, whose specification is itself stated in RFC 2119 keywords and is
+incorporated here by reference — its numbered rules govern, including its
+content guidance that the body provides context about the change. The
+mechanical surface (`type[(scope)][!]: description`, body separated from
+the header by a blank line) is checkable with `rfc-commit-lint` (usable
+directly or as a `commit-msg` hook). [R-commit-conventional] The header
+grammar, transliterated to ABNF as a derived convenience (the CC text is
+authoritative):
+
+```abnf
+commit-header = type [ "(" scope ")" ] [ "!" ] ": " description
+type          = 1*ALPHA              ; feat and fix carry CC semantics
+scope         = 1*( ALPHA / DIGIT / "." / "_" / "/" / "-" )
+description   = 1*( VCHAR / WSP )
+```
+
+Attribution names only human committers: a message MUST NOT carry LLM
+attribution (Co-Authored-By an agent, "generated with" trailers) —
+UNLESS the repository declares that LLM disclosure is mandatory, in
+which case the check inverts to demand its presence (`rfc-commit-lint
+--require-llm`). Either policy is deterministic; mixing them silently is
+not permitted. [R-commit-attribution]
+
+```transcript @R-commit-conventional
+$ printf 'feat(registry): add prune subcommand\n\nRemoves stale entries on demand rather than at read time.\n' > msg
+$ rfc-commit-lint msg
+? 0
+$ printf 'added some stuff\n' > bad
+$ rfc-commit-lint bad
+rfc-commit-lint: header is not Conventional Commits v1.0.0 (type[(scope)][!]: description)
+? 1
+$ printf 'fix: x\nbody with no blank line\n' > nosep
+$ rfc-commit-lint nosep
+rfc-commit-lint: body must be separated from the header by a blank line
+? 1
+```
+
+```transcript @R-commit-attribution
+$ printf 'fix: correct message matching\n\nCo-Authored-By: Claude <agent@example>\n' > msg
+$ rfc-commit-lint msg
+rfc-commit-lint: non-human attribution present (repository does not require LLM disclosure)
+? 1
+$ rfc-commit-lint --require-llm msg
+? 0
+$ printf 'fix: correct message matching\n' > human
+$ rfc-commit-lint --require-llm human
+rfc-commit-lint: LLM disclosure required by repository but absent
+? 1
+```
+
+The judgment half is a two-key read. Key one: an LLM with FRESH context
+— never the authoring agent's session — receives the changeset and the
+message and reports whether the message narrates WHAT HAPPENED, the
+decision and its effect, not the fine-grained edits. Key two: the human
+collaborator reads the message and that report. Both keys MUST concur
+before the commit is accepted. Fresh context is the point — an author
+reviewing its own narrative inherits its own framing, the same reasoning
+that makes adversarial reviewers independent. This is CC's own body
+guidance sharpened to a gate: a message that enumerates hunks, renamed
+variables, or touched files is a diff restated, and the diff already
+exists; the message exists to carry what the diff cannot. The two-key
+read is review judgment and lives outside the deterministic linter; the
+conformance corpus itself remains LLM-free.
+
 ### Practice (normative prose)
 
 The authoring path is research, interview, synthesis, formalize — in that
@@ -525,6 +597,9 @@ constrained is excluded from judging its own conformance.
 - RFC 2026, RFC 6410 (process, categories); RFC 7282, RFC 8789 (rough
   consensus); RFC 7322 (style); BCP 14 = RFC 2119 + RFC 8174; RFC 5234,
   RFC 7405 (ABNF); https://www.ietf.org/process/informal/.
+- Conventional Commits v1.0.0 — the commit-message specification
+  incorporated by reference in Commit discipline; itself an RFC
+  2119-keyword document. https://www.conventionalcommits.org/en/v1.0.0/
 - Jackson & Wing, "Lightweight Formal Methods," IEEE Computer roundtable,
   1996 — the evidence layer's theory (partiality in language, modeling,
   analysis, composition).
@@ -625,3 +700,9 @@ constrained is excluded from judging its own conformance.
   doctrine — syntax defined by a document is expressed in ABNF with
   witnesses) [R-fsm-grammar], covering the deadline extension and instant
   forms.
+- 2026-08-14: commit discipline added — an accepted decision's commit
+  message MUST be Conventional Commits v1.0.0 [R-commit-conventional]
+  with human-only attribution unless the repository requires LLM
+  disclosure [R-commit-attribution] (deterministic, rfc-commit-lint);
+  a two-key read — a fresh-context LLM with the changeset, then the
+  human — confirms the message narrates what happened, not the hunks.

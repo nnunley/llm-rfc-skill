@@ -71,6 +71,16 @@ merge conflict is the allocation lock. Published files are frozen
 partial amendment = `Updates:`, original stays authoritative; retired
 without successor = `HISTORIC`; dead drafts = `WITHDRAWN`.
 
+**Commit discipline.** When a human collaborator accepts a change, its
+commit message MUST be Conventional Commits v1.0.0 (check:
+`<this skill dir>/rfc-commit-lint`, also usable as a commit-msg hook),
+attribute only humans unless the repo mandates LLM disclosure
+(`--require-llm` inverts the check), and pass a two-key read: an LLM
+with FRESH context (never the authoring session — dispatch a subagent
+with only the changeset and the message) reports whether the message
+narrates what happened — the decision and effect, not the hunks — and
+the human reads the message plus that report. Both keys must concur.
+
 ## Conformance corpus (anti-backsliding)
 
 **Dual verifiability governs evidence:** every conformance artifact must be

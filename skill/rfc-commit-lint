@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# rfc-commit-lint — deterministic half of the BCP's commit discipline.
+# Usage: rfc-commit-lint [--require-llm] [<msg-file>|-]
+#   (default stdin; suitable as a git commit-msg hook: rfc-commit-lint "$1")
+# Checks: Conventional Commits v1.0.0 header (type[(scope)][!]: description),
+# blank line between header and body, and the attribution policy — LLM
+# attribution forbidden by default, REQUIRED with --require-llm when the
+# repository mandates disclosure. The second, human read-through (message
+# narrates what happened, not the hunks) is deliberately not automated.
+set -u
+
+REQ=0
+FILE="-"
+for a in "$@"; do
+    case "$a" in
+        --require-llm) REQ=1 ;;
+        *)             FILE="$a" ;;
+    esac
+done
+
+msg=$(cat "$FILE") || exit 2
+fails=0
+
+header=$(printf '%s\n' "$msg" | head -1)
+if ! printf '%s' "$header" | grep -qE '^[A-Za-z]+(\([A-Za-z0-9._/-]+\))?!?: [^[:space:]].*$'; then
+    echo "rfc-commit-lint: header is not Conventional Commits v1.0.0 (type[(scope)][!]: description)"
+    fails=1
+fi
+
+second=$(printf '%s\n' "$msg" | sed -n 2p)
+if [ -n "$second" ]; then
+    echo "rfc-commit-lint: body must be separated from the header by a blank line"
+    fails=1
+fi
+
+# attribution: LLM markers in trailers or generated-with lines
+llm_found=0
+if printf '%s\n' "$msg" | grep -qiE '(co-authored-by|assisted-by):.*(claude|gpt|copilot|gemini|llm|anthropic|openai|agent)|generated with|🤖'; then
+    llm_found=1
+fi
+if [ "$REQ" = 1 ]; then
+    if [ "$llm_found" = 0 ]; then
+        echo "rfc-commit-lint: LLM disclosure required by repository but absent"
+        fails=1
+    fi
+else
+    if [ "$llm_found" = 1 ]; then
+        echo "rfc-commit-lint: non-human attribution present (repository does not require LLM disclosure)"
+        fails=1
+    fi
+fi
+
+exit "$fails"
