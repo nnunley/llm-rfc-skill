@@ -147,6 +147,10 @@ $ rfc-lint draft-a-x-00.md 2>&1 | grep -c "missing required section"
 
 ### Formal language
 
+Documents MUST NOT reference local machines, secrets, or PII-bearing
+real paths; example data uses generic placeholders (lint-enforced:
+home-directory paths, credential patterns, key material).
+
 Requirements are stated with uppercase BCP 14 keywords; a document using
 them MUST carry the BCP 14 boilerplate in Terminology. [R-bcp14] Lowercase
 keyword lookalikes inside the Specification are flagged as ambiguity
@@ -491,3 +495,6 @@ constrained is excluded from judging its own conformance.
   evidence MUST replay green before publication — resolving the latent
   tension between spec-first red corpora and the published-corpus-green
   CI requirement.
+- 2026-08-14: hygiene rule adopted — no local-machine references, secrets,
+  or PII-bearing paths in documents; generic placeholders for examples
+  (lint-enforced).

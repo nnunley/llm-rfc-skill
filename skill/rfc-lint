@@ -387,6 +387,25 @@ lint_file() {
         na "fsm-witnesses"
     fi
 
+    # 4f. Hygiene: documents never reference local machines, secrets, or
+    # PII-bearing real paths. Example data uses generic placeholders
+    # (user, alice, bob, carol, example, you), which are allowed.
+    local hygiene
+    hygiene=$(awk '
+        {
+            if ($0 ~ /\/(Users|home)\/(user|alice|bob|carol|example|you)(\/|[^A-Za-z0-9_-]|$)/) next
+            if ($0 ~ /\/(Users|home)\/[A-Za-z0-9_-]+/) { print NR ": local home path (use \/home\/user-style placeholders)"; next }
+            if ($0 ~ /AKIA[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]/)        { print NR ": AWS access key pattern"; next }
+            if ($0 ~ /gh[pousr]_[A-Za-z0-9]+/ && $0 ~ /gh[pousr]_[A-Za-z0-9]................................/) { print NR ": GitHub token pattern"; next }
+            if ($0 ~ /xox[baprs]-[A-Za-z0-9-]+/)                     { print NR ": Slack token pattern"; next }
+            if ($0 ~ /-----BEGIN [A-Z ]*PRIVATE KEY/)                { print NR ": private key material"; next }
+        }
+    ' "$f")
+    if [[ -n "$hygiene" ]]; then
+        while IFS= read -r h; do err "$f" "hygiene: line $h"; done <<< "$hygiene"
+    fi
+    ck "hygiene"
+
     # 5. Supersession linkage
     if [[ "$status" == "SUPERSEDED" ]]; then
         grep -qE '^\*\*Superseded-By:\*\* *[0-9]{4}' "$f" || \
