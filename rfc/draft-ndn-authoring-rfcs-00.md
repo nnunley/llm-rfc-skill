@@ -109,9 +109,10 @@ $ rfc-lint bad-name.md >/dev/null 2>&1
 ### Status machine
 
 Every document MUST carry a `**Status:**` line whose value is one of
-`DRAFT`, `LAST-CALL`, `PUBLISHED`, `SUPERSEDED`, `WITHDRAWN`, or
-`HISTORIC`. [R-status-vocab] Status MUST agree with the filename form:
-draft-named documents are unpublished (`DRAFT`, `LAST-CALL`, `WITHDRAWN`)
+`DRAFT`, `LAST-CALL`, `POSTPONED`, `PUBLISHED`, `SUPERSEDED`,
+`WITHDRAWN`, or `HISTORIC`. [R-status-vocab] Status MUST agree with the filename form:
+draft-named documents are unpublished (`DRAFT`, `LAST-CALL`, `POSTPONED`,
+`WITHDRAWN`)
 and numbered documents are published (`PUBLISHED`, `SUPERSEDED`,
 `HISTORIC`) — numbers do not exist before publication. [R-status-form]
 
@@ -210,7 +211,12 @@ $ grep -c '^\$ true$' out/draft-a-x-00.w.transcript
 
 ### Lifecycle
 
-Publication assigns the number: the next number is taken from the series
+Publication REQUIRES the document's embedded evidence to replay green —
+implementation experience in the sense of W3C Candidate Recommendation
+and TC39 stage 4. A spec-first draft keeps its red corpus while DRAFT
+and publishes only once implementation turns it green; this is what
+makes the published-corpus-green CI rule an invariant rather than an
+aspiration. Publication assigns the number: the next number is taken from the series
 `index.md`, the file is renamed and retitled, status becomes `PUBLISHED`,
 and the index entry is committed — concurrent publications collide on the
 index, and that merge conflict is the allocation lock. A published RFC is
@@ -244,6 +250,10 @@ DRAFT -> WITHDRAWN
 LAST-CALL -> PUBLISHED
 LAST-CALL -> DRAFT       ; objections unaddressed, or call retracted
 LAST-CALL -> WITHDRAWN
+DRAFT -> POSTPONED         ; good idea, wrong time
+LAST-CALL -> POSTPONED     ; a call can conclude "not now"
+POSTPONED -> DRAFT         ; resume
+POSTPONED -> WITHDRAWN     ; terminate
 PUBLISHED -> SUPERSEDED
 PUBLISHED -> HISTORIC
 terminal SUPERSEDED HISTORIC WITHDRAWN
@@ -257,9 +267,14 @@ terminal SUPERSEDED HISTORIC WITHDRAWN
 | PUBLISHED  | DRAFT      | no      |
 | SUPERSEDED | DRAFT      | no      |
 | WITHDRAWN  | LAST-CALL  | no      |
+| POSTPONED  | DRAFT      | yes     |
+| POSTPONED  | PUBLISHED  | no      |
 Full replacement uses `Obsoletes:`; partial amendment uses `Updates:` and
 replaces only the requirement IDs it names; retirement without a successor
-is `HISTORIC`; dead drafts are `WITHDRAWN`. Requirement IDs are permanent
+is `HISTORIC`; dead drafts are `WITHDRAWN`. `POSTPONED` parks a draft
+whose idea is sound but whose time is wrong (a last call MAY conclude
+this); a postponed draft keeps its name, resumes to `DRAFT`, or ends
+`WITHDRAWN` — it never publishes without first resuming. Requirement IDs are permanent
 once published, and the tangled evidence of every published RFC runs as
 one corpus in CI — work on one RFC cannot silently regress another's
 requirements.
@@ -302,7 +317,13 @@ projects. Consensus is rough (RFC 7282): objections are addressed, not
 necessarily withdrawn, and humans adjudicate when contested. Silence
 implies consent ONLY inside a declared LAST-CALL window; silence during
 the draft stage implies nothing at all — a draft comment period asks
-"what is wrong?", a last call asks only "does anyone object?". Any
+"what is wrong?", a last call asks only "does anyone object?".
+Consent is registered, never inferred: a document in LAST-CALL MUST
+carry a consensus table naming its reviewers (dispositions: pending,
+consent, or concern with text — lint-checked). A recorded concern MUST
+block publication until its resolution is recorded; the objection
+deadline binds only once every named reviewer has registered a
+disposition. Any
 participant, human or agent, is welcome as author, reviewer, or objector.
 
 Published RFCs are cited across repository series as `<series>/<NNNN>` where
@@ -459,3 +480,14 @@ constrained is excluded from judging its own conformance.
   silence exists only inside a declared LAST-CALL window; draft-stage
   silence carries no meaning (comment request and consent gate are
   different instruments).
+- 2026-08-14: POSTPONED status added (from Rust's FCP dispositions):
+  non-terminal, so the machine gains its resume (-> DRAFT) and
+  termination (-> WITHDRAWN) arcs — the fsm dead-end rule enforces that
+  requirement mechanically, as demonstrated before wiring.
+- 2026-08-14: registered consensus adopted (rfcbot-derived): LAST-CALL
+  documents carry a lint-checked consensus table; concerns block
+  publication; the deadline binds only after full registration.
+- 2026-08-14: publication gate adopted (W3C CR / TC39 stage-4 derived):
+  evidence MUST replay green before publication — resolving the latent
+  tension between spec-first red corpora and the published-corpus-green
+  CI requirement.

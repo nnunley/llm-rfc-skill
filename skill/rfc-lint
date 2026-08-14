@@ -20,7 +20,7 @@ ck() { CK="${CK:+$CK }$1"; }
 na() { NA="${NA:+$NA }$1"; }
 
 REQUIRED_SECTIONS="Abstract Motivation Terminology Specification Alternatives_Considered Security_Considerations References Changelog"
-VALID_STATUS="DRAFT|LAST-CALL|PUBLISHED|SUPERSEDED|WITHDRAWN|HISTORIC"
+VALID_STATUS="DRAFT|LAST-CALL|PUBLISHED|SUPERSEDED|WITHDRAWN|HISTORIC|POSTPONED"
 VALID_CATEGORY="Standards-Track|Informational|Experimental|BCP"
 BCP14_RE='\b(MUST NOT|MUST|REQUIRED|SHALL NOT|SHALL|SHOULD NOT|SHOULD|RECOMMENDED|NOT RECOMMENDED|MAY|OPTIONAL)\b'
 BCP14_BOILERPLATE='BCP 14'
@@ -68,7 +68,7 @@ lint_file() {
     # 2a. Status must match the filename form: numbers exist only after
     # publication (the merge of the index entry is the serialization point)
     case "$form:$status" in
-        numbered:DRAFT|numbered:LAST-CALL|numbered:WITHDRAWN)
+        numbered:DRAFT|numbered:LAST-CALL|numbered:WITHDRAWN|numbered:POSTPONED)
             err "$f" "numbered RFCs are published by definition — unpublished docs use draft-<author>-<slug>-NN.md" ;;
         draft:PUBLISHED|draft:SUPERSEDED|draft:HISTORIC)
             err "$f" "publishing assigns the number: rename to NNNN-slug.md and add the index entry" ;;
@@ -81,8 +81,38 @@ lint_file() {
         grep -qiE "objections by [0-9]{4}-[0-9]{2}-[0-9]{2}" "$f" || \
             err "$f" "LAST-CALL requires a Changelog line 'objections by YYYY-MM-DD'"
         ck "deadline"
+        # Consensus record (rfcbot-derived): consent is registered, never
+        # inferred. LAST-CALL requires a reviewer table; dispositions are
+        # pending, consent, or concern: <text>.
+        local cons_rows cons_bad
+        cons_rows=$(awk '
+            /^\| *reviewer *\| *disposition *\|/ { intab = 1; next }
+            intab && /^\|[ :-]*\|/ { next }
+            intab && /^\|/ { print; next }
+            intab { intab = 0 }
+        ' "$f")
+        if [[ -z "$cons_rows" ]]; then
+            err "$f" "LAST-CALL requires a consensus table (| reviewer | disposition |) with the named reviewers"
+            na "consensus"
+        else
+            cons_bad=$(awk -F'|' '
+                {
+                    d = $3
+                    gsub(/^[[:space:]]+|[[:space:]]+$/, "", d)
+                    if (d != "pending" && d != "consent" && d !~ /^concern:/)
+                        print d
+                }
+            ' <<< "$cons_rows")
+            if [[ -n "$cons_bad" ]]; then
+                while IFS= read -r d; do
+                    err "$f" "consensus disposition must be pending, consent, or 'concern: <text>' — got '$d'"
+                done <<< "$cons_bad"
+            fi
+            ck "consensus($(grep -c . <<< "$cons_rows") reviewer(s))"
+        fi
     else
         na "deadline"
+        na "consensus"
     fi
 
     # 2d. Updates:/Obsoletes: must reference published RFC numbers

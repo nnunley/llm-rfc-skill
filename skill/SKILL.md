@@ -129,7 +129,8 @@ template) whenever keywords appear.
 |---|---|
 | Identity: `draft-<author>-<slug>-NN.md` (unpublished) or `NNNN-slug.md` (published), title matches | rfc-lint ERROR |
 | Status matches form (numbers only exist once published) | rfc-lint ERROR |
-| Status ∈ DRAFT, LAST-CALL, PUBLISHED, SUPERSEDED, WITHDRAWN, HISTORIC | rfc-lint ERROR |
+| Status ∈ DRAFT, LAST-CALL, POSTPONED, PUBLISHED, SUPERSEDED, WITHDRAWN, HISTORIC | rfc-lint ERROR |
+| LAST-CALL carries a consensus table (pending/consent/concern) | rfc-lint ERROR |
 | Category (optional) ∈ Standards-Track, Informational, Experimental, BCP | rfc-lint ERROR |
 | LAST-CALL states "objections by YYYY-MM-DD" | rfc-lint ERROR |
 | Updates:/Obsoletes: are 4-digit RFC numbers | rfc-lint ERROR |
