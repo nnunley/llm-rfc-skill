@@ -108,6 +108,24 @@ The same intent as today's shell transcript for duplicate rejection, with
 the sandbox, provisioning, and projection mechanics owned by the adapter
 rather than restated in every block of every document.
 
+### Flow vocabularies (script style)
+
+The most broadly useful vocabulary shape is the **flow**: an ordered
+sequence of actions against a stateful engine with observation
+assertions interleaved — a session as structured statements. The
+provenance is twofold: moot sessions, and FitNesse's SLIM script tables,
+where a table compiles to a plain instruction list exactly so that a
+small server in any language can execute it — engine decoupling as the
+format's founding purpose. A flow vocabulary defines its action
+statements, its assertion statements, and nothing else.
+
+A flow MAY additionally be bound to a declared state machine: the block
+names the machine's requirement tag, each step names the transition it
+exercises, and the walked path is validated against the machine before
+the adapter ever runs — a path witness, generalizing the single-edge
+transition witnesses of the fsm type. A flow that walks an illegal path
+fails structurally, engine untouched.
+
 ### The bootstrap adapter
 
 Raw `transcript` blocks (shell replay under the hygiene sandbox) remain
@@ -174,6 +192,9 @@ hygiene sandbox remains the floor, not a security boundary.
   evidence is expected to move to a `gi-session` vocabulary by revision.
 - FitNesse and Gherkin fixture experience — recorded in the process BCP's
   rejected-forms decision record.
+- FitNesse SLIM (Simple List Invocation Method) — script tables compiled
+  to plain instruction lists for language-agnostic execution; the
+  flow-vocabulary precedent. http://fitnesse.org/FitNesse.UserGuide.WritingAcceptanceTests.SliM
 
 ## Changelog
 
@@ -185,3 +206,7 @@ hygiene sandbox remains the floor, not a security boundary.
 - 2026-08-14: clarified on review — moot's @-prefix is MOO-style command
   idiom, not part of the adopted pattern; vocabularies use their own
   domain's vernacular.
+- 2026-08-14: flow vocabularies recognized as the primary shape (moot
+  sessions; FitNesse SLIM script tables as the engine-decoupling
+  precedent), with optional fsm binding: a flow as a path witness walked
+  through a declared machine.
