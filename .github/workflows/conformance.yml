@@ -13,8 +13,9 @@ jobs:
 
       - name: Run rfc-lint on all RFCs and drafts
         run: |
+          shopt -s nullglob
           for file in rfc/draft-*.md rfc/[0-9]*.md; do
-            [ -e "$file" ] && skill/rfc-lint "$file"
+            skill/rfc-lint "$file" || exit 1
           done
         shell: bash
 
