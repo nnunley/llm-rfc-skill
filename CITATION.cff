@@ -1,0 +1,16 @@
+cff-version: 1.2.0
+message: "If you use or adapt this process, please cite it as below."
+title: "llm-rfc-skill: an RFC process for human-LLM co-authored software specifications"
+authors:
+  - family-names: "Nunley"
+    given-names: "Norman"
+    email: "nnunley@gmail.com"
+type: software
+repository-code: "https://github.com/nnunley/llm-rfc-skill"
+license: "CC-BY-4.0 AND MIT AND CC0-1.0"
+abstract: >-
+  A specification-authoring process for one or more humans collaborating
+  with one or more LLM agents: an IETF-derived RFC lifecycle with literate,
+  machine-verifiable evidence and a cumulative conformance corpus. Designed
+  and formalized by Norman Nunley, Jr in collaboration with Claude
+  (Anthropic), 2026.

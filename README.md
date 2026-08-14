@@ -34,16 +34,34 @@ skill/rfc-lint rfc/draft-ndn-authoring-rfcs-00.md   # structure: 0 errors
 skill/rfc-run  rfc/draft-ndn-authoring-rfcs-00.md   # evidence: replays green
 ```
 
-## License
+## License and attribution
 
-Dual-licensed by content type:
+Three grants, by function:
 
-- **Text** — the RFC series (`rfc/`), `skill/SKILL.md`, `skill/template.md`,
-  and this README are licensed under [CC BY 4.0](LICENSE-CC-BY-4.0):
-  reuse and adapt freely, with attribution.
-- **Code** — the validation and tooling scripts (`skill/rfc-lint`,
-  `skill/rfc-tangle`, `skill/rfc-run`, `skill/rfc-search`,
-  `skill/rfc-fsm-render`) are licensed under the [MIT License](LICENSE-MIT).
+- **Process text** — the RFC series (`rfc/`), `skill/SKILL.md`, and this
+  README: [CC BY 4.0](LICENSE-CC-BY-4.0). Reuse and adapt freely **with
+  attribution** (see Citing below). Per-document attribution belongs to
+  each RFC's own `Authors:` line — contributors publishing here are
+  credited as themselves.
+- **Template** — `skill/template.md`: [CC0 / public domain](LICENSE-CC0).
+  The template exists to be copied into your documents; instantiating it
+  creates **no derivative-work obligation, no attribution requirement, and
+  no license carried into your RFC**.
+- **Tooling** — `skill/rfc-lint`, `skill/rfc-tangle`, `skill/rfc-run`,
+  `skill/rfc-search`, `skill/rfc-fsm-render`: [MIT](LICENSE-MIT).
 
-Documents produced *using* this process belong to their authors and carry
-whatever license their home repository chooses.
+**No claim on outputs.** Documents produced using this process — including
+those instantiated from the template and validated by the tooling — belong
+entirely to their authors, under whatever license their home repository
+chooses. Nothing here reaches into them.
+
+Portions of the RFC texts quote IETF RFCs (e.g. the BCP 14 boilerplate of
+RFC 8174) under the IETF Trust's provisions; those sentences remain the
+Trust's and are not relicensed here.
+
+### Citing
+
+See [CITATION.cff](CITATION.cff) (GitHub's "Cite this repository" uses
+it). Short form: *Nunley, N. — llm-rfc-skill: an RFC process for
+human-LLM co-authored software specifications, formalized in
+collaboration with Claude (Anthropic), 2026.*
