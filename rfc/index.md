@@ -10,3 +10,5 @@ lock — concurrent publishes conflict here and merge resolution decides).
 ## Drafts
 
 - draft-ndn-authoring-rfcs-00 — The RFC Process (BCP)
+- draft-claude-superpowers-planning-00 — The Superpowers Planning Pipeline (Informational)
+- draft-claude-iterative-development-00 — Prime-Radiant Iterative Development (Informational)
