@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # rfc-run — tangle an RFC's transcript evidence and replay each block in a
-# fresh sandbox (the deterministic runner for the `transcript` evidence type).
+# fresh hygiene sandbox (the deterministic runner for the `transcript`
+# evidence type). This sandbox provides environment isolation (HOME,
+# config), NOT a security boundary; security isolation (container, VM,
+# throwaway host) must be deployed at the execution layer by the deployment.
 # Usage: rfc-run <rfc.md>...        exit 1 if any block fails
-# Sandbox per block (per the evidence conventions): cwd + HOME +
+# Hygiene sandbox per block (per the evidence conventions): cwd + HOME +
 # XDG_CONFIG_HOME at /tmp/gi-rfc, GIT_CONFIG_NOSYSTEM=1, git identity set.
 # Notation: '$ cmd' runs; '? N' asserts exit status (absent = 0); other
 # lines are expected output, byte-exact.
