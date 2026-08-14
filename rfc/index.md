@@ -17,3 +17,7 @@ lock — concurrent publishes conflict here and merge resolution decides).
 - draft-ndn-sandbox-providers-00 — Configurable Sandbox Providers (Experimental, spacedock-derived)
 - draft-ndn-llm-digest-00 — Token-Aware LLM Digests of RFCs (Experimental)
 - draft-ndn-fsm-session-00 — FSM Session State for RFC-Governed Skills (Experimental)
+- draft-claude-architecture-analysis-00 — Multi-Agent Architecture Analysis (Informational, PAAD agentic-architecture)
+- draft-claude-accessibility-audit-00 — Multi-Agent Accessibility Audit (Informational, PAAD agentic-a11y)
+- draft-claude-alignment-check-00 — Requirements/Design/Plan Alignment (Informational, PAAD alignment)
+- draft-claude-vibe-guardrails-00 — Guardrailed Lightweight Changes (Informational, PAAD vibe)
