@@ -67,7 +67,7 @@ when, and only when, they appear in all capitals, as shown here.
   their execution commands, run cadence (sentinel or iteration-level), and current status.
 - **Story** — a requirement card with title, acceptance criteria (ACs), proof obligations
   per AC, and sources in the original specification. Assigned stable ID STORY-NNNN and
-  organized in per-epic files under `docs/superpowers/iterations/requirements/`.
+  organized in per-epic files under `requirements/` in the artifact root.
 - **Epic** — a grouping of related stories. Assigned stable ID EPIC-NNN.
 - **Parallel adversarial review (PAR)** — a quality gate where two independent reviewer
   subagents evaluate the same work with competitive framing, findings aggregated by union
@@ -110,8 +110,11 @@ by interrupting the chat session at an iteration boundary.
 
 ### Artifact Structure
 
-All iterative-development artifacts MUST be stored in `docs/superpowers/iterations/`.
-The human's original specification collateral MUST NEVER be modified.
+All iterative-development artifacts MUST be stored under a single
+deployment-chosen artifact root (`docs/iterations/` RECOMMENDED; the
+prime-radiant implementation uses `docs/superpowers/iterations/`). Paths
+below are relative to that root. The human's original specification
+collateral MUST NEVER be modified.
 
 The artifact set MUST include:
 
@@ -149,11 +152,11 @@ human spec collateral via this pipeline:
 
 4. **Aggregate stories** — Combine extracted stories, deduplicate by title, group into
    epics, assign stable STORY-IDs and EPIC-IDs, and output per-epic `.md` files in
-   `docs/superpowers/iterations/requirements/` with proof obligations preserved.
+   `requirements/` with proof obligations preserved.
 
 5. **Aggregate scenarios** — Combine extracted scenarios, deduplicate by title, assign
    stable SCENARIO-IDs and JOURNEY-IDs, resolve story-title references to STORY-IDs,
-   and output `docs/superpowers/iterations/behavior-scenarios.md`.
+   and output `behavior-scenarios.md`.
 
 6. **Back-link scenarios to stories** — Update per-epic story files to append scenario
    references (`scenario:SCENARIO-NNNN` or `scenario:JOURNEY-NNNN`) to AC lines with
@@ -164,7 +167,7 @@ human spec collateral via this pipeline:
    Chunks classified as gap or story-only (with observable behavior) MUST trigger
    re-extraction.
 
-8. **Initialize behavior corpus** — Create `docs/superpowers/iterations/behavior-corpus.md`
+8. **Initialize behavior corpus** — Create `behavior-corpus.md`
    with all scenarios indexed. Set run cadence: journey scenarios → `sentinel`; surface
    scenarios → `iteration` (refined during scoping). Set execution command to `TBD`.
 
@@ -208,7 +211,7 @@ ordered follow-on iterations:
    - Does any iteration leave observable behavior without planned scenario coverage?
    Reviewers MUST reach consensus (APPROVE or REVISE); if REVISE, adjust and re-review.
 
-7. **Write and validate roadmap** — Output `docs/superpowers/iterations/roadmap.md` with
+7. **Write and validate roadmap** — Output `roadmap.md` with
    ITER-0000 and ordered follow-on iterations, including intent, rationale, journey
    scenario, committed stories, and status fields. Validate format.
 
@@ -409,8 +412,9 @@ externally observable requirement the spec describes?" NOT: "Are the stories don
 
 ### Single upfront planning followed by implementation
 
-The `superpowers:writing-plans → superpowers:subagent-driven-development` workflow
-produces a detailed plan upfront and implements it in one pass. This works well for
+A plan-then-execute workflow (superpowers' writing-plans →
+subagent-driven-development is one implementation) produces a detailed
+plan upfront and implements it in one pass. This works well for
 small, bounded projects with clear scope. Rejected for large or ambiguous specs because
 the upfront plan often loses track of requirements-coverage interactions; stories marked
 done do not produce a working product. Iterative development addresses this by validating
@@ -498,3 +502,8 @@ The key security considerations:
   sentinel corpus for regression detection, and completion criteria centered on behavior
   evidence rather than finished stories. Includes FSM for iteration lifecycle and
   relationship to the RFC specification process.
+- 2026-08-14: de-implementation-coupled on review — the methodology is not
+  specific to any one agent or plugin. Artifact paths are now relative to a
+  deployment-chosen artifact root (prime-radiant's layout recorded as one
+  implementation), and the plan-then-execute alternative names superpowers
+  as an implementation rather than the definition.

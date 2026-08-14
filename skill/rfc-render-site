@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-# rfc-render-site — render an RFC series directory to a single HTML page.
-# Usage: rfc-render-site <rfc-dir> <out.html> [--embed]
-#   --embed: bare fragment for CSP-restricted hosts with native mermaid
-#   (default: standalone page with mermaid loaded from CDN, for Pages)
+# rfc-render-site — render an RFC series directory to HTML.
+# Usage: rfc-render-site <rfc-dir> <outdir>          multi-page site (Pages):
+#            index.html from index.md, one page per document, cross-linked
+#        rfc-render-site <rfc-dir> <out.html> [--embed]
+#            single continuous page; --embed emits a bare fragment for
+#            CSP-restricted hosts with native mermaid (artifact previews)
 # fsm diagrams are derived via the sibling rfc-fsm-render — never authored.
 import sys
-STYLE_DOC = '''<title>RFC Series — llm-rfc-skill</title>
-<style>
+STYLE = '''<style>
 :root{
   --paper:#FCFBF8; --ink:#1B1D21; --muted:#5A5F66; --rule:#E3E0D8;
   --accent:#0B5394; --accent-ink:#0B5394; --panel:#F4F2EC; --term:#22262B;
@@ -42,11 +43,12 @@ body{margin:0;background:var(--paper);color:var(--ink);
 nav{position:sticky;top:0;height:100vh;overflow-y:auto;padding:28px 18px;border-right:1px solid var(--rule)}
 nav .brand{font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:13px;
   letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
-nav .brand strong{color:var(--ink)}
+nav .brand a{color:var(--ink);text-decoration:none;font-weight:700}
 nav .note{font-size:12.5px;color:var(--muted);margin:0 0 18px;line-height:1.4}
 nav a{display:block;padding:10px 10px;border-radius:6px;text-decoration:none;color:var(--ink);
   border:1px solid transparent;margin-bottom:8px}
 nav a:hover{border-color:var(--rule);background:var(--panel)}
+nav a[aria-current="page"]{border-color:var(--accent);background:var(--panel)}
 .navt{display:block;font-size:13.5px;font-weight:600;margin:6px 0 2px;line-height:1.3}
 .navn{display:block;font-size:11px;color:var(--muted);font-family:ui-monospace,Menlo,monospace}
 main{padding:36px 44px;min-width:0}
@@ -55,6 +57,7 @@ h1{font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:21px;line-height
 h2{font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:15px;letter-spacing:.06em;
   text-transform:uppercase;color:var(--accent-ink);margin:34px 0 10px;border-bottom:1px solid var(--rule);padding-bottom:6px}
 h3{font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:14px;margin:24px 0 8px}
+h4{font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:13px;color:var(--muted);margin:20px 0 6px}
 p,li{max-width:68ch}
 a{color:var(--accent-ink)}
 code{font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:.88em;background:var(--panel);
@@ -72,6 +75,7 @@ pre code{background:none;padding:0}
 .p-Informational{color:var(--info);background:var(--infobg)}
 .p-Experimental{color:var(--exp);background:var(--expbg)}
 .p-LAST-CALL{color:var(--exp);background:var(--expbg)}
+.p-PUBLISHED{color:var(--bcp);background:var(--bcpbg)}
 .rtag{font-family:ui-monospace,Menlo,monospace;font-size:.82em;color:var(--tag);
   background:var(--tagbg);padding:.05em .35em;border-radius:4px;white-space:nowrap}
 .btag{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:var(--tag);margin:0 0 4px}
@@ -99,26 +103,24 @@ dl{margin:0}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 @media (max-width:860px){.wrap{grid-template-columns:1fr}nav{position:static;height:auto;border-right:none;border-bottom:1px solid var(--rule)}main{padding:24px 18px}}
 @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
-</style>
-<div class="wrap">
-<nav>
-  <div class="brand"><strong>llm-rfc-skill</strong></div>
-  <p class="note">RFC series preview — four drafts, rendered from source; diagrams derived from verified fsm blocks by rfc-fsm-render.</p>
-  __NAV__
-</nav>
-<main>
-__BODY__
-</main>
-</div>
-'''
+</style>'''
+
+MERMAID = '''<script type="module">
+import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+mermaid.initialize({ startOnLoad: false, theme: dark ? "dark" : "neutral" });
+await mermaid.run({ querySelector: "pre.mermaid" });
+</script>'''
 
 import html, re, subprocess, tempfile, os, pathlib
 
 RFC_DIR = os.path.abspath(sys.argv[1])
 OUT = os.path.abspath(sys.argv[2])
 EMBED = "--embed" in sys.argv[3:]
+MULTI = not EMBED and not OUT.endswith(".html")
 FSM_RENDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rfc-fsm-render")
 
+NAMES = set()       # documents in this series, by stem
 def discover():
     docs = []
     for f in sorted(pathlib.Path(RFC_DIR).glob("*.md")):
@@ -128,7 +130,6 @@ def discover():
         docs.append((f.stem, cat))
     docs.sort(key=lambda d: (0 if d[1] == "BCP" else 1 if d[0][0].isdigit() else 2, d[0]))
     return docs
-DOCS = None
 
 def fsm_to_mermaid(src):
     with tempfile.NamedTemporaryFile("w", suffix=".fsm", delete=False) as f:
@@ -137,20 +138,44 @@ def fsm_to_mermaid(src):
     os.unlink(path)
     return out
 
-def inline(s):
+def doc_href(name):
+    return f"{name}.html" if MULTI else f"#{name}"
+
+def crosslink(s, self_name):
+    # series documents: draft names and published NNNN-slug stems
+    def dl(m):
+        n = m.group(0)
+        if n in NAMES and n != self_name:
+            return f'<a href="{doc_href(n)}">{n}</a>'
+        return n
+    s = re.sub(r'\bdraft-[a-z]+-[a-z0-9-]+-\d{2}\b', dl, s)
+    # internet RFC citations -> rfc-editor (series-local numbers win if present)
+    def rl(m):
+        num = m.group(1)
+        local = next((n for n in NAMES if n.startswith(num + "-")), None)
+        if local and local != self_name:
+            return f'<a href="{doc_href(local)}">RFC {num}</a>'
+        return f'<a href="https://www.rfc-editor.org/rfc/rfc{int(num)}">RFC {num}</a>'
+    s = re.sub(r'\bRFC (\d{3,5})\b', rl, s)
+    return s
+
+def inline(s, self_name="", link=True):
     s = html.escape(s, quote=False)
     s = re.sub(r'`([^`]+)`', r'<code>\1</code>', s)
     s = re.sub(r'\*\*([^*]+)\*\*', r'<strong>\1</strong>', s)
     s = re.sub(r'\[R-([a-z0-9-]+)\]', r'<span class="rtag">[R-\1]</span>', s)
-    s = re.sub(r'(https?://[^\s<)]+)', r'<a href="\1">\1</a>', s)
+    if link:
+        s = crosslink(s, self_name)
+    s = re.sub(r'(?<!href=")(https?://[^\s<)]+)', r'<a href="\1">\1</a>', s)
     return s
 
-def render_doc(name, cat):
+def render_doc(name):
     text = pathlib.Path(RFC_DIR, f"{name}.md").read_text()
     lines = text.split("\n")
     out, i, in_masthead = [], 0, False
     title = name
     status = "DRAFT"
+    def il(s): return inline(s, self_name=name)
     while i < len(lines):
         ln = lines[i]
         if ln.startswith("```"):
@@ -184,23 +209,25 @@ def render_doc(name, cat):
             i += 1; continue
         if ln.startswith("# "):
             title = ln[2:]
-            out.append(f'<h1>{inline(ln[2:])}</h1>')
+            out.append(f'<h1>{inline(ln[2:], self_name=name, link=False)}</h1>')
             i += 1; continue
         mm = re.match(r'\*\*([A-Za-z-]+):\*\* (.*)', ln)
         if mm and len(out) < 6:
             if not in_masthead:
                 out.append('<dl class="masthead">'); in_masthead = True
             if mm.group(1) == "Status": status = mm.group(2).strip()
-            out.append(f'<div><dt>{mm.group(1)}</dt><dd>{inline(mm.group(2))}</dd></div>')
+            out.append(f'<div><dt>{mm.group(1)}</dt><dd>{il(mm.group(2))}</dd></div>')
             i += 1
             if not re.match(r'\*\*([A-Za-z-]+):\*\* ', lines[i] if i < len(lines) else ""):
                 out.append('</dl>'); in_masthead = False
             continue
         if ln.startswith("## "):
             sid = re.sub(r'[^a-z0-9]+', '-', ln[3:].lower()).strip('-')
-            out.append(f'<h2 id="{name}-{sid}">{inline(ln[3:])}</h2>'); i += 1; continue
+            out.append(f'<h2 id="{name}-{sid}">{il(ln[3:])}</h2>'); i += 1; continue
+        if ln.startswith("#### "):
+            out.append(f'<h4>{il(ln[5:])}</h4>'); i += 1; continue
         if ln.startswith("### "):
-            out.append(f'<h3>{inline(ln[4:])}</h3>'); i += 1; continue
+            out.append(f'<h3>{il(ln[4:])}</h3>'); i += 1; continue
         if ln.startswith("|"):
             rows = []
             while i < len(lines) and lines[i].startswith("|"):
@@ -210,7 +237,7 @@ def render_doc(name, cat):
             t = '<div class="tscroll"><table>'
             for ri, r in enumerate(rows):
                 cell = "th" if ri == 0 else "td"
-                t += "<tr>" + "".join(f"<{cell}>{inline(c)}</{cell}>" for c in r) + "</tr>"
+                t += "<tr>" + "".join(f"<{cell}>{il(c)}</{cell}>" for c in r) + "</tr>"
             t += "</table></div>"
             out.append(t); continue
         if ln.startswith("- "):
@@ -219,7 +246,7 @@ def render_doc(name, cat):
                 if lines[i].startswith("- "): items.append(lines[i][2:])
                 else: items[-1] += " " + lines[i].strip()
                 i += 1
-            out.append("<ul>" + "".join(f"<li>{inline(x)}</li>" for x in items) + "</ul>")
+            out.append("<ul>" + "".join(f"<li>{il(x)}</li>" for x in items) + "</ul>")
             continue
         if re.match(r'^\d+\. ', ln):
             items = []
@@ -227,13 +254,13 @@ def render_doc(name, cat):
                 if re.match(r'^\d+\. ', lines[i]): items.append(re.sub(r'^\d+\. ', '', lines[i]))
                 else: items[-1] += " " + lines[i].strip()
                 i += 1
-            out.append("<ol>" + "".join(f"<li>{inline(x)}</li>" for x in items) + "</ol>")
+            out.append("<ol>" + "".join(f"<li>{il(x)}</li>" for x in items) + "</ol>")
             continue
         if ln.startswith("> "):
             q = []
             while i < len(lines) and lines[i].startswith(">"):
                 q.append(lines[i].lstrip("> ")); i += 1
-            out.append(f'<blockquote>{inline(" ".join(q))}</blockquote>')
+            out.append(f'<blockquote>{il(" ".join(q))}</blockquote>')
             continue
         if ln.strip() == "":
             i += 1; continue
@@ -242,27 +269,49 @@ def render_doc(name, cat):
             para.append(lines[i]); i += 1
         if not para:
             para = [lines[i]]; i += 1
-        out.append(f"<p>{inline(' '.join(para))}</p>")
+        out.append(f"<p>{il(' '.join(para))}</p>")
     return title, status, "\n".join(out)
 
-sections, nav = [], []
-for name, cat in discover():
-    title, status, body = render_doc(name, cat)
+def nav_entry(name, cat, title, status, current=False):
     short = title.split(":", 1)[1].strip() if ":" in title else title
-    nav.append(f'<a href="#{name}"><span class="pill p-{status}">{status}</span><span class="pill p-{cat}">{cat}</span><span class="navt">{html.escape(short)}</span><code class="navn">{name}</code></a>')
-    sections.append(f'<article id="{name}">{body}</article>')
+    cur = ' aria-current="page"' if current else ''
+    return (f'<a href="{doc_href(name)}"{cur}><span class="pill p-{status}">{status}</span>'
+            f'<span class="pill p-{cat}">{cat}</span><span class="navt">{html.escape(short)}</span>'
+            f'<code class="navn">{name}</code></a>')
 
-html_out = STYLE_DOC.replace("__NAV__", "\n".join(nav)).replace("__BODY__", "\n<hr class='docsep'>\n".join(sections))
-if not EMBED:
-    html_out = ("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
-                "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
-                + html_out[:html_out.index("</style>")+8]
-                + "</head><body>" + html_out[html_out.index("</style>")+8:]
-                + '''<script type="module">
-import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
-const dark = matchMedia("(prefers-color-scheme: dark)").matches;
-mermaid.initialize({ startOnLoad: false, theme: dark ? "dark" : "neutral" });
-await mermaid.run({ querySelector: "pre.mermaid" });
-</script></body></html>''')
-pathlib.Path(OUT).write_text(html_out)
-print(f"wrote {OUT}")
+def page(title_text, nav_html, body_html, note):
+    inner = (f'{STYLE}<div class="wrap">\n<nav>\n'
+             f'  <div class="brand"><a href="{"index.html" if MULTI else "#"}">llm-rfc-skill</a></div>\n'
+             f'  <p class="note">{note}</p>\n{nav_html}\n</nav>\n<main>\n{body_html}\n</main>\n</div>')
+    if EMBED:
+        return f'<title>{html.escape(title_text)}</title>' + inner
+    return ("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
+            "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+            f"<title>{html.escape(title_text)}</title>"
+            + inner + MERMAID + "</body></html>")
+
+docs = discover()
+NAMES = {name for name, _ in docs}
+rendered = [(name, cat) + render_doc(name) for name, cat in docs]  # (name, cat, title, status, body)
+note = f"RFC series — {len(docs)} document(s), rendered from source; diagrams derived from verified fsm blocks by rfc-fsm-render."
+
+if MULTI:
+    os.makedirs(OUT, exist_ok=True)
+    for name, cat, title, status, body in rendered:
+        nav = "\n".join(nav_entry(n, c, t, s, current=(n == name)) for n, c, t, s, _ in rendered)
+        pathlib.Path(OUT, f"{name}.html").write_text(
+            page(f"{name} — llm-rfc-skill", nav, f'<article id="{name}">{body}</article>', note))
+    # index: the series index document, cross-linked, plus the nav
+    nav = "\n".join(nav_entry(n, c, t, s) for n, c, t, s, _ in rendered)
+    if pathlib.Path(RFC_DIR, "index.md").exists():
+        _, _, idx_body = render_doc("index")
+    else:
+        idx_body = "<h1>RFC Index</h1>"
+    pathlib.Path(OUT, "index.html").write_text(
+        page("RFC Series — llm-rfc-skill", nav, f'<article id="index">{idx_body}</article>', note))
+    print(f"wrote {OUT}/ ({len(rendered) + 1} pages)")
+else:
+    nav = "\n".join(nav_entry(n, c, t, s) for n, c, t, s, _ in rendered)
+    body = "\n<hr class='docsep'>\n".join(f'<article id="{n}">{b}</article>' for n, _, _, _, b in rendered)
+    pathlib.Path(OUT).write_text(page("RFC Series — llm-rfc-skill", nav, body, note))
+    print(f"wrote {OUT}")

@@ -25,11 +25,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run rfc-run on published RFCs (failures reported, not blocking)
+      - name: Run rfc-run on published RFCs (blocking)
         run: |
           if ls rfc/[0-9]*.md >/dev/null 2>&1; then
-            skill/rfc-run rfc/[0-9]*.md || echo "Draft or published RFC evidence had failures"
+            skill/rfc-run rfc/[0-9]*.md
           else
             echo "No published RFCs found (all drafts)"
           fi
+        shell: bash
+
+      - name: Run rfc-run on drafts (reported, not blocking — drafts may be spec-first red)
+        run: |
+          shopt -s nullglob
+          for file in rfc/draft-*.md; do
+            skill/rfc-run "$file" || echo "::warning::draft corpus not green: $file"
+          done
         shell: bash
