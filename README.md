@@ -7,12 +7,18 @@ evidence (literate transcripts, tables, ABNF + witnesses), and a
 cumulative conformance corpus that stops agents from regressing
 previously established requirements.
 
+This repository hosts the **process and skill itself** — process-scoped
+BCPs and practice documents are published in its `rfc/` series.
+Project-specific RFCs (features, formats, interfaces of a codebase)
+belong in each project's own `docs/rfc/` or `rfc/` series; they are
+never centralized here.
+
 - `skill/` — the agent skill: process (`SKILL.md`), document template,
   and deterministic tooling (`rfc-lint`, `rfc-tangle`, `rfc-run`,
   `rfc-search`).
-- `rfc/` — this project's own RFC series. The process is self-hosting:
-  `rfc/draft-ndn-authoring-rfcs-00.md` specifies it as a BCP whose
-  evidence replays green against the tooling.
+- `rfc/` — this project's process/skill RFC series. The process is
+  self-hosting: `rfc/draft-ndn-authoring-rfcs-00.md` specifies it as a
+  BCP whose evidence replays green against the tooling.
 
 ## Install
 
