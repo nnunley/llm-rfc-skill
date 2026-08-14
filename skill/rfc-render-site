@@ -99,6 +99,8 @@ th,td{border-bottom:1px solid var(--rule);padding:6px 14px 6px 0;vertical-align:
 blockquote{border-left:3px solid var(--accent);margin:16px 0;padding:2px 0 2px 16px;
   color:var(--ink);font-style:italic;max-width:64ch}
 hr.docsep{border:none;border-top:3px double var(--rule);margin:46px 0}
+.llmlink{margin-top:38px;padding-top:12px;border-top:1px solid var(--rule);
+  font-size:12.5px;color:var(--muted);font-family:ui-monospace,Menlo,monospace}
 dl{margin:0}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 @media (max-width:860px){.wrap{grid-template-columns:1fr}nav{position:static;height:auto;border-right:none;border-bottom:1px solid var(--rule)}main{padding:24px 18px}}
@@ -119,6 +121,7 @@ OUT = os.path.abspath(sys.argv[2])
 EMBED = "--embed" in sys.argv[3:]
 MULTI = not EMBED and not OUT.endswith(".html")
 FSM_RENDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rfc-fsm-render")
+LLM_RENDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rfc-render-llm")
 
 NAMES = set()       # documents in this series, by stem
 def discover():
@@ -298,9 +301,15 @@ note = f"RFC series — {len(docs)} document(s), rendered from source; diagrams 
 if MULTI:
     os.makedirs(OUT, exist_ok=True)
     for name, cat, title, status, body in rendered:
+        digest = subprocess.run([LLM_RENDER, os.path.join(RFC_DIR, f"{name}.md")],
+                                capture_output=True, text=True).stdout
+        pathlib.Path(OUT, f"{name}.llm.md").write_text(digest)
+        llm_link = (f'<p class="llmlink"><a href="{name}.llm.md">LLM digest</a> — '
+                    f'token-minimal normative projection ({len(digest.split())} words); '
+                    f'cite the full document for anything it omits.</p>')
         nav = "\n".join(nav_entry(n, c, t, s, current=(n == name)) for n, c, t, s, _ in rendered)
         pathlib.Path(OUT, f"{name}.html").write_text(
-            page(f"{name} — llm-rfc-skill", nav, f'<article id="{name}">{body}</article>', note))
+            page(f"{name} — llm-rfc-skill", nav, f'<article id="{name}">{body}{llm_link}</article>', note))
     # index: the series index document, cross-linked, plus the nav
     nav = "\n".join(nav_entry(n, c, t, s) for n, c, t, s, _ in rendered)
     if pathlib.Path(RFC_DIR, "index.md").exists():
