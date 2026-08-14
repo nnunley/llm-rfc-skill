@@ -1,0 +1,32 @@
+name: RFC Conformance
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    name: Lint RFC documents
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run rfc-lint on all RFCs and drafts
+        run: |
+          skill/rfc-lint rfc/*.md
+        shell: bash
+
+  evidence:
+    name: Verify published RFC evidence
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run rfc-run on published RFCs (failures reported, not blocking)
+        run: |
+          if ls rfc/[0-9]*.md >/dev/null 2>&1; then
+            skill/rfc-run rfc/[0-9]*.md || echo "Draft or published RFC evidence had failures"
+          else
+            echo "No published RFCs found (all drafts)"
+          fi
+        shell: bash
