@@ -15,3 +15,5 @@ lock — concurrent publishes conflict here and merge resolution decides).
 - draft-claude-adversarial-review-00 — Adversarial Spec Review (Experimental, PAAD-derived)
 - draft-ndn-evidence-adapters-00 — Structured Evidence Adapters (Experimental, moot-derived)
 - draft-ndn-sandbox-providers-00 — Configurable Sandbox Providers (Experimental, spacedock-derived)
+- draft-ndn-llm-digest-00 — Token-Aware LLM Digests of RFCs (Experimental)
+- draft-ndn-fsm-session-00 — FSM Session State for RFC-Governed Skills (Experimental)

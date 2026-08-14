@@ -8,9 +8,57 @@
 # Changelog, the BCP 14 boilerplate, evidence transcripts, authorship —
 # and headers print only when content under them survives.
 # The digest cites the full document; it never replaces it.
+#
+# Verify mode: rfc-render-llm --verify <rfc.md> [digest.md]
+# Deterministic invariants of the projection (digest freshly generated
+# when not supplied): the digest's [R-] marker set equals the source's
+# kept-section marker set (no requirement lost, none invented); only
+# abnf/fsm fences appear, and every line inside them exists verbatim in
+# the source; the digest never exceeds the source. Silent on success.
 set -u
 
-[ $# -ge 1 ] || { echo "usage: rfc-render-llm <rfc.md>..." >&2; exit 2; }
+[ $# -ge 1 ] || { echo "usage: rfc-render-llm [--verify] <rfc.md>..." >&2; exit 2; }
+
+if [ "${1:-}" = "--verify" ]; then
+    shift
+    src="${1:?usage: rfc-render-llm --verify <rfc.md> [digest.md]}"
+    dig="${2:-}"
+    tmpd=""
+    if [ -z "$dig" ]; then
+        tmpd=$(mktemp)
+        "$0" "$src" > "$tmpd"
+        dig="$tmpd"
+    fi
+    fails=0
+    kept_src=$(awk '
+        /^```/ { inb = !inb; next }
+        inb { next }
+        /^## / { sec = $0; sub(/^## /, "", sec)
+                 skip = (sec == "Changelog" || sec == "Motivation" || sec == "Abstract" || sec == "Alternatives Considered" || sec == "References")
+                 next }
+        !skip { print }
+    ' "$src")
+    src_m=$(printf '%s\n' "$kept_src" | grep -o '\[R-[a-z0-9-]*\]' | sort -u)
+    dig_m=$(grep -o '\[R-[a-z0-9-]*\]' "$dig" | sort -u)
+    for m in $src_m; do
+        printf '%s\n' "$dig_m" | grep -qF "$m" || { echo "digest missing marker: $m"; fails=1; }
+    done
+    for m in $dig_m; do
+        printf '%s\n' "$src_m" | grep -qF "$m" || { echo "digest has marker absent from source: $m"; fails=1; }
+    done
+    badf=$(grep -E '^```' "$dig" | grep -vE '^```$' | grep -vE '^```(abnf|fsm)( @R-[a-z0-9-]+)?$' || true)
+    if [ -n "$badf" ]; then
+        while IFS= read -r l; do echo "digest contains non-grammar fence: $l"; done <<< "$badf"
+        fails=1
+    fi
+    while IFS= read -r l; do
+        [ -n "$l" ] || continue
+        grep -qxF "$l" "$src" || { echo "digest grammar line not in source: $l"; fails=1; }
+    done <<< "$(awk '/^```/ { inb = !inb; next } inb { print }' "$dig")"
+    [ "$(wc -w < "$dig")" -le "$(wc -w < "$src")" ] || { echo "digest larger than source"; fails=1; }
+    [ -n "$tmpd" ] && rm -f "$tmpd"
+    exit $fails
+fi
 
 for f in "$@"; do
     [ -f "$f" ] || { echo "rfc-render-llm: $f not found" >&2; exit 1; }

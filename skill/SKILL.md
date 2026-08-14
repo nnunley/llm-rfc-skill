@@ -117,7 +117,12 @@ tangled file and exits 0/1. Choose types by least indirection:
   machine as a process governor — query mode prints the stage guidance and
   permitted transitions, guard mode exits nonzero on an illegal move —
   so an agent derives what is and is not permitted from the document,
-  never from memory.
+  never from memory. Session mode (`--state FILE`) persists the walked
+  path as a validated witness across context resets and discloses ONLY
+  the current stage — use it when executing an RFC-governed process.
+  `rfc-render-llm <rfc.md>` emits a token-minimal normative digest
+  (`--verify` checks its invariants); prefer the digest when loading an
+  RFC into context, and resolve markers to the full document as needed.
 
 The tangled evidence of ALL published RFCs is the conformance corpus: CI
 runs the WHOLE corpus, never just the newest RFC's — work on one RFC cannot

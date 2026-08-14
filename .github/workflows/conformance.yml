@@ -34,6 +34,14 @@ jobs:
           fi
         shell: bash
 
+      - name: Verify LLM digest invariants (every document is a projector test case)
+        run: |
+          shopt -s nullglob
+          for file in rfc/draft-*.md rfc/[0-9]*.md; do
+            skill/rfc-render-llm --verify "$file"
+          done
+        shell: bash
+
       - name: Verify draft corpus declarations (blocking — red only by declaration)
         run: |
           shopt -s nullglob

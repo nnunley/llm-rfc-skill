@@ -4,16 +4,71 @@
 #   rfc-fsm-exec <file.fsm> <state>            query: guidance + permitted moves
 #   rfc-fsm-exec <file.fsm> <state> <target>   guard: exit 0 legal, 1 violation
 #   rfc-fsm-exec <file.fsm> <state> timeout    guard: resolve the deadline handler
+# Session mode (lightweight persisted state, progressive disclosure):
+#   rfc-fsm-exec <file.fsm> --state FILE            where am I / what may I do
+#   rfc-fsm-exec <file.fsm> --state FILE <target>   advance; record on success
+# The state file is one state name per line — a path witness: line 1 must
+# be the machine's initial state and every consecutive pair a declared
+# transition. An absent/empty file initializes to the initial state. A
+# file recording an illegal path is rejected (exit 2). Only the CURRENT
+# state's guidance and legal moves are ever disclosed — an agent needs no
+# view of the rest of the machine.
 # The machine is the spec's verified transition relation; this tool derives
 # an agent's permissions in the current stage from it — guidance comes from
 # the document, never from memory. Exit 2 on usage/unknown-state errors.
 set -u
 
-[[ $# -ge 2 && $# -le 3 ]] || { echo "usage: rfc-fsm-exec <file.fsm> <state> [target]" >&2; exit 2; }
-f="$1"; cur="$2"; target="${3:-}"
-[[ -f "$f" ]] || { echo "rfc-fsm-exec: $f not found" >&2; exit 2; }
+STATE_FILE=""
+ARGS=()
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --state) STATE_FILE="$2"; shift 2 ;;
+        *)       ARGS+=("$1"); shift ;;
+    esac
+done
+set -- "${ARGS[@]:-}"
 
-awk -v cur="$cur" -v target="$target" '
+f="${1:-}"
+[[ -n "$f" && -f "$f" ]] || { echo "rfc-fsm-exec: fsm file not found" >&2; exit 2; }
+
+if [[ -n "$STATE_FILE" ]]; then
+    [[ $# -le 2 ]] || { echo "usage: rfc-fsm-exec <file.fsm> --state FILE [target]" >&2; exit 2; }
+    target="${2:-}"
+    machine_init=$(awk '{ sub(/[[:space:]]*;.*$/, "") } $1 == "initial" { print $2; exit }' "$f")
+    [[ -n "$machine_init" ]] || { echo "rfc-fsm-exec: machine has no initial state" >&2; exit 2; }
+    if [[ ! -s "$STATE_FILE" ]]; then
+        printf '%s\n' "$machine_init" > "$STATE_FILE"
+        echo "session initialized at $machine_init"
+    fi
+    # the recorded path is a witness: validate before trusting it
+    if ! awk -v sf="$STATE_FILE" '
+        { sub(/[[:space:]]*;.*$/, "") }
+        $1 == "initial" { init = $2; next }
+        NF == 3 && $2 == "->" { trans[$1 SUBSEP $3] = 1; next }
+        END {
+            n = 0
+            while ((getline line < sf) > 0) if (line != "") path[++n] = line
+            if (n == 0 || path[1] != init) { print "state file does not begin at " init; exit 1 }
+            for (i = 2; i <= n; i++)
+                if (!((path[i-1] SUBSEP path[i]) in trans)) {
+                    print "state file records an illegal path: " path[i-1] " -> " path[i]; exit 1
+                }
+        }
+    ' "$f"; then
+        exit 2
+    fi
+    cur=$(awk 'NF { last = $0 } END { print last }' "$STATE_FILE")
+    if [[ -z "$target" ]]; then
+        set -- "$f" "$cur"
+    else
+        set -- "$f" "$cur" "$target"
+    fi
+else
+    [[ $# -ge 2 && $# -le 3 ]] || { echo "usage: rfc-fsm-exec <file.fsm> <state> [target] | rfc-fsm-exec <file.fsm> --state FILE [target]" >&2; exit 2; }
+fi
+f="$1"; cur="$2"; target="${3:-}"
+
+out=$(awk -v cur="$cur" -v target="$target" '
     { sub(/[[:space:]]*;.*$/, "") }
     /^[[:space:]]*$/ { next }
     $1 == "initial"  { init = $2; states[$2] = 1; next }
@@ -70,4 +125,12 @@ awk -v cur="$cur" -v target="$target" '
         }
         print "anything not listed above is a process violation."
     }
-' "$f"
+' "$f")
+rc=$?
+[ -n "$out" ] && printf '%s\n' "$out"
+# session mode: record a successful advance (timeout resolves to its handler)
+if [[ -n "$STATE_FILE" && -n "$target" && "$rc" -eq 0 ]]; then
+    resolved=$(printf '%s\n' "$out" | sed -n 's/^LEGAL: .* -> \([A-Za-z0-9_-]*\).*$/\1/p' | head -1)
+    [[ -n "$resolved" ]] && printf '%s\n' "$resolved" >> "$STATE_FILE"
+fi
+exit "$rc"
