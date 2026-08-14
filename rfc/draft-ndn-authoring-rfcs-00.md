@@ -188,6 +188,12 @@ permitted edit is setting `SUPERSEDED` with its `**Superseded-By:**` link
 when a successor publishes. [R-immutable] A document in `SUPERSEDED`
 status MUST name its successor. [R-supersede] A document in `LAST-CALL`
 MUST state its objection deadline in the Changelog. [R-lastcall]
+`LAST-CALL` is not a one-way gate: the document returns to `DRAFT` when
+substantive objections stand unaddressed at the deadline, or when the
+call is retracted as premature (a last call asserts a settled design;
+active revision falsifies the assertion). From `LAST-CALL` a document
+proceeds to `PUBLISHED` on rough consensus, returns to `DRAFT`, or ends
+`WITHDRAWN` — a Changelog entry records which, and why.
 Full replacement uses `Obsoletes:`; partial amendment uses `Updates:` and
 replaces only the requirement IDs it names; retirement without a successor
 is `HISTORIC`; dead drafts are `WITHDRAWN`. Requirement IDs are permanent
