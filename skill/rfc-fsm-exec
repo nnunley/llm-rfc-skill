@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# rfc-fsm-exec — execute a verified fsm as a process governor.
+# Usage:
+#   rfc-fsm-exec <file.fsm> <state>            query: guidance + permitted moves
+#   rfc-fsm-exec <file.fsm> <state> <target>   guard: exit 0 legal, 1 violation
+# The machine is the spec's verified transition relation; this tool derives
+# an agent's permissions in the current stage from it — guidance comes from
+# the document, never from memory. Exit 2 on usage/unknown-state errors.
+set -u
+
+[[ $# -ge 2 && $# -le 3 ]] || { echo "usage: rfc-fsm-exec <file.fsm> <state> [target]" >&2; exit 2; }
+f="$1"; cur="$2"; target="${3:-}"
+[[ -f "$f" ]] || { echo "rfc-fsm-exec: $f not found" >&2; exit 2; }
+
+awk -v cur="$cur" -v target="$target" '
+    { sub(/[[:space:]]*;.*$/, "") }
+    /^[[:space:]]*$/ { next }
+    $1 == "initial"  { init = $2; states[$2] = 1; next }
+    $1 == "terminal" { for (i = 2; i <= NF; i++) { term[$i] = 1; states[$i] = 1 } next }
+    $1 == "note" {
+        nname = $2; sub(/:$/, "", nname)
+        text = $0
+        sub(/^[[:space:]]*note[[:space:]]+[A-Za-z0-9_-]+:[[:space:]]*/, "", text)
+        notes[nname] = (nname in notes) ? notes[nname] "; " text : text
+        next
+    }
+    NF == 3 && $2 == "->" { states[$1] = 1; states[$3] = 1; adj[$1] = adj[$1] " " $3; next }
+    END {
+        if (!(cur in states)) {
+            printf "rfc-fsm-exec: %s is not a state of this machine\n", cur > "/dev/stderr"
+            exit 2
+        }
+        n = split(adj[cur], nxt, " ")
+        if (target != "") {
+            for (i = 1; i <= n; i++) if (nxt[i] == target) {
+                printf "LEGAL: %s -> %s\n", cur, target
+                if (target in notes) printf "entering %s: %s\n", target, notes[target]
+                exit 0
+            }
+            printf "VIOLATION: %s -> %s is not a transition of this machine\n", cur, target
+            printf "permitted from %s:%s\n", cur, (adj[cur] == "" ? " (none — terminal)" : adj[cur])
+            exit 1
+        }
+        printf "state: %s%s%s\n", cur, (cur == init ? " (initial)" : ""), ((cur in term) ? " (terminal)" : "")
+        printf "guidance: %s\n", (cur in notes ? notes[cur] : "(none recorded in the machine)")
+        if (cur in term) {
+            print "permitted transitions: none — this state is terminal"
+        } else {
+            print "permitted transitions:"
+            for (i = 1; i <= n; i++) {
+                if (nxt[i] == "") continue
+                printf "  %s -> %s%s\n", cur, nxt[i], ((nxt[i] in notes) ? "   [" notes[nxt[i]] "]" : "")
+            }
+        }
+        print "anything not listed above is a process violation."
+    }
+' "$f"

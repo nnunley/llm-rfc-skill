@@ -302,6 +302,11 @@ lint_file() {
                 for (i = i0+1; i <= n; i++) { term[w[i]] = 1; states[w[i]] = 1 }
                 next
             }
+            if (w[i0] == "note") {
+                nname = w[i0+1]; sub(/:$/, "", nname)
+                noted[nname] = 1
+                next
+            }
             if (n - i0 + 1 == 3 && w[i0+1] == "->") {
                 from = w[i0]; to = w[i0+2]
                 states[from] = 1; states[to] = 1
@@ -315,7 +320,7 @@ lint_file() {
         }
         function delete_arrays(   k) {
             split("", states); split("", term); split("", trans)
-            split("", outdeg); split("", adj); split("", seen); split("", q)
+            split("", outdeg); split("", adj); split("", seen); split("", q); split("", noted)
         }
         function finish(   qi, qn, j, m, a, s) {
             if (init == "") { print "missing initial state"; return }
@@ -328,6 +333,7 @@ lint_file() {
             for (s in states) if (!(s in seen)) print "state " s " unreachable from " init
             for (s in term) if (s in outdeg) print "terminal state " s " has outgoing transitions"
             for (s in states) if (!(s in term) && !(s in outdeg)) print "state " s " is a dead end (no outgoing transitions, not terminal)"
+            for (s in noted) if (!(s in states)) print "note references undeclared state " s
         }
         END { if (infsm) print "unclosed fsm block" }
     ' "$f")

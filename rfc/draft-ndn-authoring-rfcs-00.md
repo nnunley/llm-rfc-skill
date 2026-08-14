@@ -261,6 +261,13 @@ POSTPONED -> WITHDRAWN     ; terminate
 PUBLISHED -> SUPERSEDED
 PUBLISHED -> HISTORIC
 terminal SUPERSEDED HISTORIC WITHDRAWN
+note DRAFT: revise in place, Changelog each change, corpus can be red
+note LAST-CALL: consensus table + deadline required, concerns block
+note POSTPONED: parked - sound idea, wrong time
+note PUBLISHED: frozen, number assigned, corpus-green invariant
+note SUPERSEDED: successor named in Superseded-By
+note HISTORIC: retired without successor
+note WITHDRAWN: dead draft
 ```
 
 <!-- evidence: @R-lifecycle -->
@@ -498,3 +505,7 @@ constrained is excluded from judging its own conformance.
 - 2026-08-14: hygiene rule adopted — no local-machine references, secrets,
   or PII-bearing paths in documents; generic placeholders for examples
   (lint-enforced).
+- 2026-08-14: fsm notation gains per-state note guidance and the machine
+  becomes executable: rfc-fsm-exec derives an agent's stage permissions
+  (query) and guards transitions (exit code) directly from the verified
+  machine — process guidance from the document, never from memory.

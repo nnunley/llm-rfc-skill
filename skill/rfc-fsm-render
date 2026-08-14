@@ -22,11 +22,19 @@ mermaid)
         /^[[:space:]]*$/ { next }
         $1 == "initial"  { note($2); init = sid($2); next }
         $1 == "terminal" { for (i = 2; i <= NF; i++) { note($i); term[sid($i)] = 1 } next }
+        $1 == "note" {
+            nname = $2; sub(/:$/, "", nname); note(nname)
+            text = $0
+            sub(/^[[:space:]]*note[[:space:]]+[A-Za-z0-9_-]+:[[:space:]]*/, "", text)
+            stnote[sid(nname)] = (sid(nname) in stnote) ? stnote[sid(nname)] "; " text : text
+            next
+        }
         NF == 3 && $2 == "->" { note($1); note($3); edges[++n] = sid($1) " --> " sid($3); next }
         END {
             if (init != "") printf "    [*] --> %s\n", init
             for (i = 1; i <= n; i++) printf "    %s\n", edges[i]
             for (t in term) printf "    %s --> [*]\n", t
+            for (t in stnote) printf "    note right of %s: %s\n", t, stnote[t]
         }
     ' "$f"
     ;;
@@ -36,6 +44,12 @@ d2)
         /^[[:space:]]*$/ { next }
         $1 == "initial"  { printf "start: \"\" { shape: circle; width: 20 }\nstart -> %s\n", $2; next }
         $1 == "terminal" { for (i = 2; i <= NF; i++) printf "%s.style.double-border: true\n", $i; next }
+        $1 == "note" {
+            nname = $2; sub(/:$/, "", nname)
+            text = $0; sub(/^[[:space:]]*note[[:space:]]+[A-Za-z0-9_-]+:[[:space:]]*/, "", text)
+            printf "%s.tooltip: %s\n", nname, text
+            next
+        }
         NF == 3 && $2 == "->" { printf "%s -> %s\n", $1, $3 }
     ' "$f"
     ;;

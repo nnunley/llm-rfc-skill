@@ -99,7 +99,12 @@ tangled file and exits 0/1. Choose types by least indirection:
   for single initial, reachability, terminal closure, and dead ends;
   allowed/forbidden transition witness tables are cross-checked against the
   machine; mermaid/D2 displays are derived via `rfc-fsm-render`, never
-  authored.
+  authored. Per-state `note <STATE>: <guidance>` lines carry stage
+  permissions; `rfc-fsm-exec <file.fsm> <state> [target]` executes the
+  machine as a process governor — query mode prints the stage guidance and
+  permitted transitions, guard mode exits nonzero on an illegal move —
+  so an agent derives what is and is not permitted from the document,
+  never from memory.
 
 The tangled evidence of ALL published RFCs is the conformance corpus: CI
 runs the WHOLE corpus, never just the newest RFC's — work on one RFC cannot
