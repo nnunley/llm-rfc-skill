@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # rfc-render-llm — project an RFC to a token-minimal digest for LLM context.
 # Usage: rfc-render-llm <rfc.md>...
-# Deterministic projection keeping the normative surface: identity/masthead,
-# every sentence bearing a BCP 14 keyword or an [R-] marker, ABNF and fsm
-# blocks verbatim (already compact), and witness tables. Drops narrative
-# prose, evidence transcripts (verifier fodder, not consumer guidance), and
-# the Changelog. The digest cites the full document; it never replaces it.
+# Deterministic projection keeping ONLY the normative surface: identity,
+# Status/Category/Corpus, [R-]-marked requirement paragraphs, keyword
+# sentences, ABNF and fsm blocks verbatim, witness tables. Everything
+# discursive is dropped — Abstract, Motivation, Alternatives, References,
+# Changelog, the BCP 14 boilerplate, evidence transcripts, authorship —
+# and headers print only when content under them survives.
+# The digest cites the full document; it never replaces it.
 set -u
 
 [ $# -ge 1 ] || { echo "usage: rfc-render-llm <rfc.md>..." >&2; exit 2; }
@@ -13,41 +15,60 @@ set -u
 for f in "$@"; do
     [ -f "$f" ] || { echo "rfc-render-llm: $f not found" >&2; exit 1; }
     awk '
+        # emit content, flushing any pending section headers first
+        function emit(s) {
+            if (p2 != "") { print p2; p2 = "" }
+            if (p3 != "") { print p3; p3 = "" }
+            print s
+        }
+
         # --- fenced blocks: keep abnf and fsm verbatim, drop the rest ---
         /^```/ {
-            if (inblk) { inblk = 0; keepblk = 0; next }
+            flushpara()
+            if (inblk) { if (keepblk) print $0; inblk = 0; keepblk = 0; next }
             inblk = 1
-            keepblk = ($0 ~ /^```(abnf|fsm)/)
-            if (keepblk) print $0
+            keepblk = (!skip && $0 ~ /^```(abnf|fsm)/)
+            if (keepblk) emit($0)
             next
         }
         inblk { if (keepblk) print; next }
 
-        # --- masthead + title ---
+        # --- masthead + title (identity and state only, markup stripped) ---
         /^# /                 { print; next }
-        /^\*\*[A-Za-z-]+:\*\* / { if (!body) { print; next } }
-        /^## /                { sec = $0; sub(/^## /, "", sec); body = 1 }
+        /^\*\*(Status|Category|Corpus|Obsoletes|Updates|Superseded-By):\*\* / { if (!body) { gsub(/\*\*/, ""); print; next } }
+        /^\*\*[A-Za-z-]+:\*\* / { if (!body) next }
 
-        # --- drop non-normative sections wholesale ---
-        sec == "Changelog" || sec == "Motivation" || sec == "Abstract" { next }
+        # --- section tracking; discursive sections dropped wholesale ---
+        /^## / {
+            flushpara(); body = 1
+            sec = $0; sub(/^## /, "", sec)
+            skip = (sec == "Changelog" || sec == "Motivation" || sec == "Abstract" || \
+                    sec == "Alternatives Considered" || sec == "References")
+            p2 = $0; p3 = ""
+            next
+        }
+        skip { next }
+        /^#{3,4} / { flushpara(); p3 = $0; next }
+
+        # --- the BCP 14 boilerplate is known to the reader ---
+        /^The key words "MUST"/ { boiler = 1 }
+        boiler { if ($0 == "") boiler = 0; next }
 
         # --- witness/evidence tables survive (compact rule surfaces) ---
-        /^<!-- *evidence:/ { print; intab = 1; next }
+        /^<!-- *evidence:/ { flushpara(); emit($0); intab = 1; next }
         intab && /^\|/     { print; next }
         intab && !/^\|/    { intab = 0 }
 
-        # --- paragraph accumulation: emit sentences that carry normative
-        #     weight (BCP 14 keyword or requirement marker) ---
-        /^#{2,4} / { flushpara(); print; next }
-        /^$/       { flushpara(); next }
+        # --- paragraph accumulation ---
+        /^$/ { flushpara(); next }
         { para = para " " $0 }
 
+        # a marked requirement keeps its whole paragraph (the marker binds
+        # to its context); elsewhere keep only BCP 14 keyword sentences
         function flushpara(   n, i, s, out) {
             if (para == "") return
             sub(/^[[:space:]]+/, "", para)
-            # a marked requirement keeps its whole paragraph (the marker
-            # binds to its context); elsewhere keep only keyword sentences
-            if (para ~ /\[R-[a-z0-9-]+\]/) { print para; para = ""; return }
+            if (para ~ /\[R-[a-z0-9-]+\]/) { emit(para); para = ""; return }
             n = split(para, sents, /\.([[:space:]]+|$)/)
             out = ""
             for (i = 1; i <= n; i++) {
@@ -55,7 +76,8 @@ for f in "$@"; do
                 if (s ~ /(MUST|SHALL|SHOULD|REQUIRED|RECOMMENDED|MAY |OPTIONAL)/)
                     out = out s ". "
             }
-            if (out != "") print out
+            sub(/ $/, "", out)
+            if (out != "") emit(out)
             para = ""
         }
         END { flushpara() }
