@@ -47,6 +47,17 @@ when, and only when, they appear in all capitals, as shown here.
 
 ## Specification
 
+### Decentralization
+
+The system is peer-to-peer and points outward only. No central index of
+series exists, the tooling holds no knowledge of other repositories, and
+adopting the process requires no registration anywhere — any repository
+can run a series without any other repository knowing. Every
+cross-repository relationship in this document is declared by the
+repository that depends on it: citations, dependencies, and tracked
+offers all live in the consumer. Nothing in this specification requires
+a repository to enumerate, host, or aggregate the series of others.
+
 ### Cross-repository citations
 
 A published RFC in another repository is cited compactly on the same
@@ -240,3 +251,8 @@ actually reviewed.
   `owner/repo#NNNN @ sha` citations with absolute forge-top-level links
   (full-URL form across forges), and pinned `dependencies` declarations.
   Evidence is red until rfc-lint gains the four extensions (spec-first).
+- 2026-08-14: decentralization stated as a design invariant on author
+  review — the system points outward only: no central index, no
+  registration, no repository required to know about any other; all
+  cross-repo relationships live in the consumer. The home series is a
+  canonical exploration core, open, not exclusive, not a global catalog.
