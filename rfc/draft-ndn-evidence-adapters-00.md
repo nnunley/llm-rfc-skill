@@ -194,6 +194,18 @@ hygiene sandbox remains the floor, not a security boundary.
 - mooR `moot` — the structured session-test format and its two runners;
   the markdown articulation of moot is this design's direct origin.
   https://github.com/rdaum/moor (crates/testing/moot).
+- **mdmoot** (Norman Nunley, Jr, 2026-01) — the markdown articulation
+  of moot. The line-intent notation belongs to moot itself (`;` eval,
+  `=>` expected output, `%` error expectation, `@` directive — Ryan
+  Daum's vocabulary); the markdown form carrying it, with continuation
+  lines for multiline content over a corpus of ~48 `.spec.md` files, is
+  the contribution recovered here. The transcript notation's
+  `$` / `>` / `?` family is the shell-vernacular sibling of that
+  markdown design: one- to two-character intent annotations per line,
+  continuation preserving newlines, engine behind an adapter. Recovered
+  from the conversation record (2026-01-13); the corpus itself is not
+  yet pinned — cite by repository and commit when it lands in a public
+  tree.
 - draft-ndn-multi-project-registry-02 (git-issue-tracker series) — the
   raw-shell corpus whose provisioning noise motivates migration; its
   evidence is expected to move to a `gi-session` vocabulary by revision.
@@ -228,3 +240,7 @@ hygiene sandbox remains the floor, not a security boundary.
 - 2026-08-14: environment ownership refined by
   draft-ndn-sandbox-providers-00 — isolation moves to a configurable
   provider seam; adapters keep engine mechanics (see References).
+- 2026-08-14: mdmoot provenance recovered from the conversation record
+  and cited: its line-intent annotation vocabulary with continuation
+  lines is the direct ancestor of the transcript notation family, per
+  the each-vocabulary-its-own-vernacular rule.
