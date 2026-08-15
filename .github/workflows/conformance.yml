@@ -52,3 +52,24 @@ jobs:
             echo "No drafts"
           fi
         shell: bash
+
+      - name: Per-document conformance report
+        if: always()
+        run: |
+          shopt -s nullglob
+          {
+            echo "### RFC conformance — per document"
+            echo ""
+            echo "| document | lint | corpus | declared | digest |"
+            echo "|---|---|---|---|---|"
+            for f in rfc/draft-*.md rfc/[0-9]*.md; do
+              n=$(basename "$f" .md)
+              skill/rfc-lint "$f" >/dev/null 2>&1 && L="ok" || L="**FAIL**"
+              if skill/rfc-run "$f" >/dev/null 2>&1; then C="green"; else C="red"; fi
+              d=$(sed -n 's/^\*\*Corpus:\*\* *//p' "$f" | head -1); d="${d%% *}"; d="${d:-green}"
+              [ "$C" = "$d" ] && D="$d" || D="**$d (STALE)**"
+              skill/rfc-render-llm --verify "$f" >/dev/null 2>&1 && G="ok" || G="**FAIL**"
+              echo "| $n | $L | $C | $D | $G |"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+        shell: bash
