@@ -21,3 +21,4 @@ lock — concurrent publishes conflict here and merge resolution decides).
 - draft-claude-accessibility-audit-00 — Multi-Agent Accessibility Audit (Informational, PAAD agentic-a11y)
 - draft-claude-alignment-check-00 — Requirements/Design/Plan Alignment (Informational, PAAD alignment)
 - draft-claude-vibe-guardrails-00 — Guardrailed Lightweight Changes (Informational, PAAD vibe)
+- draft-ndn-cross-repo-00 — Cross-Repository RFCs and Dependencies (Experimental)

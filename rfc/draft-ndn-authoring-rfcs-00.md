@@ -100,6 +100,9 @@ hyphen (`draft-prime-agent--review-00.md`): parsing splits at the first
 `--` when present, otherwise at the first `-`, and a slug MUST NOT
 contain `--` — every name parses one way. Author-scoped draft names
 require no coordination between concurrent authors, human or agent.
+A series MAY instead declare the repo identity profile
+(draft-ndn-cross-repo-00), in which the repository is the author
+namespace and draft names omit the author token; the profiles coexist.
 [R-identity]
 
 ```transcript @R-identity
@@ -127,9 +130,11 @@ Every document MUST carry a `**Status:**` line whose value is one of
 `DRAFT`, `LAST-CALL`, `POSTPONED`, `PUBLISHED`, `SUPERSEDED`,
 `WITHDRAWN`, or `HISTORIC`. [R-status-vocab] Status MUST agree with the filename form:
 draft-named documents are unpublished (`DRAFT`, `LAST-CALL`, `POSTPONED`,
-`WITHDRAWN`)
-and numbered documents are published (`PUBLISHED`, `SUPERSEDED`,
-`HISTORIC`) — numbers do not exist before publication. [R-status-form]
+`WITHDRAWN` — plus `SUPERSEDED` solely as the cross-repository
+forwarding pointer of draft-ndn-cross-repo-00, whose number lives in the
+accepting series) and numbered documents are published (`PUBLISHED`,
+`SUPERSEDED`, `HISTORIC`) — numbers do not exist before publication in
+the series that assigned them. [R-status-form]
 
 ```transcript @R-status-vocab
 $ printf '# draft-a-x-00: X\n**Status:** APPROVED\n' > draft-a-x-00.md
@@ -756,3 +761,7 @@ constrained is excluded from judging its own conformance.
   form over escape-laden one-line printf, `> `-prefixed heredoc lines
   shield nested evidence fences, and the `$ ` output limit extends to
   `> `. The tangle exemplar is rewritten in the new form as its witness.
+- 2026-08-14: cross-repository machinery adopted by reference
+  (draft-ndn-cross-repo-00): the repo identity profile coexists with
+  author-scoped names, and draft-named SUPERSEDED is legalized solely as
+  the cross-repo forwarding pointer.

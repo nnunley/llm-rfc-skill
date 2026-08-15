@@ -57,8 +57,16 @@ lint_file() {
         local draft_name="${BASH_REMATCH[1]}"
         grep -q "^# $draft_name: " "$f" || \
             err "$f" "missing title line '# $draft_name: <Title>'"
+    elif [[ -f "$(dirname "$f")/identity" && "$(awk 'NF && $1 !~ /^#/ { print $1; exit }' "$(dirname "$f")/identity")" == "repo" \
+            && "$base" != *--* && "$base" =~ ^(draft-[a-z0-9][a-z0-9-]*-[0-9]{2})\.md$ ]]; then
+        # repo identity profile (draft-ndn-cross-repo-00): the repository
+        # is the author namespace; draft names omit the author token
+        form="draft"
+        local draft_name="${BASH_REMATCH[1]}"
+        grep -q "^# $draft_name: " "$f" || \
+            err "$f" "missing title line '# $draft_name: <Title>'"
     else
-        err "$f" "filename must be draft-<author>-<slug>-NN.md (hyphenated authors: draft-<author>--<slug>-NN.md) or NNNN-slug.md (published)"
+        err "$f" "filename must be draft-<author>-<slug>-NN.md (hyphenated authors: draft-<author>--<slug>-NN.md; repo identity profile: draft-<slug>-NN.md) or NNNN-slug.md (published)"
     fi
     ck "identity(${form:-invalid})"
 
@@ -76,8 +84,13 @@ lint_file() {
     case "$form:$status" in
         numbered:DRAFT|numbered:LAST-CALL|numbered:WITHDRAWN|numbered:POSTPONED)
             err "$f" "numbered RFCs are published by definition — unpublished docs use draft-<author>-<slug>-NN.md" ;;
-        draft:PUBLISHED|draft:SUPERSEDED|draft:HISTORIC)
+        draft:PUBLISHED|draft:HISTORIC)
             err "$f" "publishing assigns the number: rename to NNNN-slug.md and add the index entry" ;;
+        draft:SUPERSEDED)
+            # legal exactly as the cross-repo forwarding pointer: the
+            # number was assigned in the ACCEPTING series (Superseded-By
+            # requirement enforced below)
+            ;;
     esac
     if [[ -n "$form" && -n "$status" ]]; then ck "status-form"; else na "status-form"; fi
 
@@ -137,19 +150,38 @@ lint_file() {
         na "corpus"
     fi
 
-    # 2d. Updates:/Obsoletes: must reference published RFC numbers
+    # 2d. Updates:/Obsoletes: published RFC numbers, or cross-repo refs
+    # (owner/repo#NNNN [@ sha], or full-URL#NNNN across forges) per
+    # draft-ndn-cross-repo-00
     local hdr val
     local any_ref=""
+    local XR='([A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9._-]+|https?://[^[:space:]]+)#[0-9]{4}( @ [0-9a-fA-F]{7,40})?'
     for hdr in Updates Obsoletes; do
         val="$(sed -n "s/^\*\*$hdr:\*\* *//p" "$f" | head -1)"
         if [[ -n "$val" ]]; then
             any_ref=1
-            if ! [[ "$val" =~ ^[0-9]{4}([[:space:]]*,[[:space:]]*[0-9]{4})*$ ]]; then
-                err "$f" "$hdr must list 4-digit RFC numbers (comma-separated), got '$val'"
+            if ! [[ "$val" =~ ^([0-9]{4}|$XR)([[:space:]]*,[[:space:]]*([0-9]{4}|$XR))*$ ]]; then
+                err "$f" "$hdr must list 4-digit RFC numbers or cross-repo refs (owner/repo#NNNN [@ sha]), got '$val'"
             fi
         fi
     done
     if [[ -n "$any_ref" ]]; then ck "ref-headers"; else na "ref-headers"; fi
+
+    # 2f. Declared dependencies file (cross-repo): <name> <https-url> <sha>
+    local depf deps_bad ndeps
+    depf="$(dirname "$f")/dependencies"
+    if [[ -f "$depf" ]]; then
+        deps_bad=$(awk 'NF && $1 !~ /^#/ { if ($0 !~ /^[a-z0-9][a-z0-9-]* https?:\/\/[^ ]+ [0-9a-fA-F]{7,40}$/) print $0 }' "$depf")
+        ndeps=$(awk 'NF && $1 !~ /^#/ { n++ } END { print n + 0 }' "$depf")
+        if [[ -n "$deps_bad" ]]; then
+            while IFS= read -r l; do
+                err "$f" "dependencies line malformed (want: <name> <https-url> <sha>): $l"
+            done <<< "$deps_bad"
+        fi
+        ck "dependencies($ndeps)"
+    else
+        na "dependencies"
+    fi
 
     # 2b. Category line (optional; if present must use RFC 2026 vocabulary)
     local category
@@ -472,8 +504,8 @@ lint_file() {
 
     # 5. Supersession linkage
     if [[ "$status" == "SUPERSEDED" ]]; then
-        grep -qE '^\*\*Superseded-By:\*\* *[0-9]{4}' "$f" || \
-            err "$f" "SUPERSEDED status requires '**Superseded-By:** NNNN'"
+        grep -qE '^\*\*Superseded-By:\*\* *([0-9]{4}|([A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9._-]+|https?://[^[:space:]]+)#[0-9]{4})' "$f" || \
+            err "$f" "SUPERSEDED status requires '**Superseded-By:** NNNN' (or a cross-repo ref owner/repo#NNNN)"
         ck "supersession"
     else
         na "supersession"

@@ -5,6 +5,10 @@ less slop** — specifications with durable identity, formal requirement
 language, and machine-verifiable evidence, so that what was decided stays
 decided and what was promised stays checkable.
 
+**📖 Read the RFC series rendered:** https://nnunley.github.io/llm-rfc-skill/
+— every document with derived state-machine diagrams and a token-minimal
+`.llm.md` digest beside it, regenerated from source on every push.
+
 ## The problem
 
 LLM-assisted design fails in characteristic ways. Agents produce confident,
