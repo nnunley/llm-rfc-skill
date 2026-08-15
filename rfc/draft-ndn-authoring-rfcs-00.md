@@ -335,7 +335,10 @@ substantive objections stand unaddressed at the deadline, or when the
 call is retracted as premature (a last call asserts a settled design;
 active revision falsifies the assertion). From `LAST-CALL` a document
 proceeds to `PUBLISHED` on rough consensus, returns to `DRAFT`, or ends
-`WITHDRAWN` — a Changelog entry records which, and why.
+`WITHDRAWN` — a Changelog entry records which, and why. How dispositions
+travel into the record — transport profiles, the reviewed-at revision
+anchor, transcription, and post-publication concerns — is specified in
+draft-ndn-feedback-registration-00, adopted by reference.
 The complete lifecycle transition relation is exactly the machine below;
 a status change outside it is a process violation. [R-lifecycle]
 
@@ -765,3 +768,8 @@ constrained is excluded from judging its own conformance.
   (draft-ndn-cross-repo-00): the repo identity profile coexists with
   author-scoped names, and draft-named SUPERSEDED is legalized solely as
   the cross-repo forwarding pointer.
+- 2026-08-14: feedback registration adopted by reference
+  (draft-ndn-feedback-registration-00): the consensus table gains the
+  OPTIONAL reviewed-at revision anchor, three transport profiles carry
+  dispositions into the record, and registration outlives publication
+  via the series concerns ledger.

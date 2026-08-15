@@ -116,15 +116,21 @@ lint_file() {
         else
             cons_bad=$(awk -F'|' '
                 {
-                    d = $3
+                    d = $3; r = $4
                     gsub(/^[[:space:]]+|[[:space:]]+$/, "", d)
+                    gsub(/^[[:space:]]+|[[:space:]]+$/, "", r)
                     if (d != "pending" && d != "consent" && d !~ /^concern:/)
-                        print d
+                        print "D" d
+                    else if (r != "" && r !~ /^[0-9a-fA-F]{7,40}$/)
+                        print "R" r
                 }
             ' <<< "$cons_rows")
             if [[ -n "$cons_bad" ]]; then
                 while IFS= read -r d; do
-                    err "$f" "consensus disposition must be pending, consent, or 'concern: <text>' — got '$d'"
+                    case "$d" in
+                        D*) err "$f" "consensus disposition must be pending, consent, or 'concern: <text>' — got '${d#D}'" ;;
+                        R*) err "$f" "reviewed-at must be a commit SHA (7-40 hex) — got '${d#R}'" ;;
+                    esac
                 done <<< "$cons_bad"
             fi
             ck "consensus($(grep -c . <<< "$cons_rows") reviewer(s))"
@@ -132,6 +138,23 @@ lint_file() {
     else
         na "deadline"
         na "consensus"
+    fi
+
+    # 2g. Post-publication concerns ledger (feedback registration):
+    # <rfc-name> <sha> <reviewer> <state>, state in registered|addressed|withdrawn
+    local conf con_bad ncon
+    conf="$(dirname "$f")/concerns"
+    if [[ -f "$conf" ]]; then
+        con_bad=$(awk 'NF && $1 !~ /^#/ { if ($0 !~ /^[A-Za-z0-9._-]+ [0-9a-fA-F]{7,40} [A-Za-z0-9._-]+ (registered|addressed|withdrawn)$/) print $0 }' "$conf")
+        ncon=$(awk 'NF && $1 !~ /^#/ { n++ } END { print n + 0 }' "$conf")
+        if [[ -n "$con_bad" ]]; then
+            while IFS= read -r l; do
+                err "$f" "concerns line malformed (want: <rfc-name> <sha> <reviewer> <registered|addressed|withdrawn>): $l"
+            done <<< "$con_bad"
+        fi
+        ck "concerns($ncon)"
+    else
+        na "concerns"
     fi
 
     # 2e. Corpus declaration: a draft's expected replay state is declared,
