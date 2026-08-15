@@ -195,18 +195,18 @@ hygiene sandbox remains the floor, not a security boundary.
   the markdown articulation of moot is this design's direct origin.
   https://github.com/rdaum/moor (crates/testing/moot).
 - **mdmoot** (Norman Nunley, Jr, 2026-01) — the markdown articulation
-  of moot. The line-intent notation belongs to moot itself (`;` eval,
-  `=>` expected output, `%` error expectation, `@` directive), inherited
-  from the MOO server testing lineage upstream of mooR — authorship
-  predates both; the markdown form carrying it, with continuation
-  lines for multiline content over a corpus of ~48 `.spec.md` files, is
-  the contribution recovered here. The transcript notation's
-  `$` / `>` / `?` family is the shell-vernacular sibling of that
-  markdown design: one- to two-character intent annotations per line,
-  continuation preserving newlines, engine behind an adapter. Recovered
-  from the conversation record (2026-01-13); the corpus itself is not
-  yet pinned — cite by repository and commit when it lands in a public
-  tree.
+  of moot. The line-intent notation is Zoltán Nagy's, created in mooR
+  (commit 2eaa9225d, 2024-05-30, "simple text-based test definitions",
+  replacing paired test.in/test.out files; extracted to crates/moot in
+  eb36c67ad): `@persona` directives, `;` eval, `%` command, `&`
+  eval-without-expected-output, `>` multiline continuation, other lines
+  expected output. The markdown form carrying that notation, over a
+  corpus of ~48 `.spec.md` files, is the contribution recovered here.
+  The transcript notation's `$` / `>` / `?` family is the
+  shell-vernacular sibling of the same design — and its PS2 `>`
+  continuation is moot's own continuation character, converged on
+  independently. The mdmoot corpus is not yet pinned — cite by
+  repository and commit when it lands in a public tree.
 - draft-ndn-multi-project-registry-02 (git-issue-tracker series) — the
   raw-shell corpus whose provisioning noise motivates migration; its
   evidence is expected to move to a `gi-session` vocabulary by revision.
@@ -245,3 +245,8 @@ hygiene sandbox remains the floor, not a security boundary.
   and cited: its line-intent annotation vocabulary with continuation
   lines is the direct ancestor of the transcript notation family, per
   the each-vocabulary-its-own-vernacular rule.
+- 2026-08-14: notation authorship established from mooR's own history
+  rather than recollection — git blame places the format's birth at
+  Zoltán Nagy's 2eaa9225d (2024-05-30, in mooR, not upstream of it),
+  and the annotation list is corrected against the moot README (% is
+  command, & is eval-without-output, > is moot's own continuation).
