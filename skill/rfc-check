@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # rfc-check — the whole conformance gate, one command.
-# Usage: rfc-check <rfc-dir>
+# Usage: rfc-check <rfc-dir>          full gate (the verdict of record)
+#        rfc-check <rfc.md>...        spot run (advisory — no merge standing)
 # Runs, in order, exactly what CI runs:
 #   1. rfc-lint over every draft and published RFC   (blocking)
 #   2. rfc-run over published RFCs                   (blocking)
@@ -11,14 +12,31 @@
 # gate has one body, so local runs and CI cannot drift.
 set -u
 
-DIR="${1:?usage: rfc-check <rfc-dir>}"
-[ -d "$DIR" ] || { echo "rfc-check: $DIR is not a directory" >&2; exit 2; }
+[ $# -ge 1 ] || { echo "usage: rfc-check <rfc-dir> | rfc-check <rfc.md>..." >&2; exit 2; }
 SKILL_DIR="$(cd "$(dirname "$0")" && pwd)"
 FAIL=0
+SPOT=0
 
 shopt -s nullglob
-drafts=("$DIR"/draft-*.md)
-published=("$DIR"/[0-9]*.md)
+if [ $# -eq 1 ] && [ -d "$1" ]; then
+    DIR="$1"
+    drafts=("$DIR"/draft-*.md)
+    published=("$DIR"/[0-9]*.md)
+else
+    # spot run: the named files only — advisory, never the verdict of record
+    SPOT=1
+    DIR="(spot)"
+    drafts=(); published=()
+    for f in "$@"; do
+        [ -f "$f" ] || { echo "rfc-check: $f not found" >&2; exit 2; }
+        case "$(basename "$f")" in
+            draft-*) drafts+=("$f") ;;
+            [0-9]*)  published+=("$f") ;;
+            *)       echo "rfc-check: $f is not an RFC document name" >&2; exit 2 ;;
+        esac
+    done
+    echo "== SPOT RUN — advisory, no merge standing (the gate of record is rfc-check <rfc-dir>)"
+fi
 all=("${drafts[@]}" "${published[@]}")
 [ ${#all[@]} -gt 0 ] || { echo "rfc-check: no RFC documents in $DIR"; exit 2; }
 
@@ -57,9 +75,11 @@ for f in "${all[@]}"; do
 done
 
 echo ""
+tag=""
+[ "$SPOT" = 1 ] && tag=" — spot run, no merge standing"
 if [ "$FAIL" = 0 ]; then
-    echo "rfc-check: PASS ($DIR)"
+    echo "rfc-check: PASS ($DIR)$tag"
 else
-    echo "rfc-check: FAIL ($DIR)"
+    echo "rfc-check: FAIL ($DIR)$tag"
 fi
 exit "$FAIL"

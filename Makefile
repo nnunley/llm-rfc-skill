@@ -5,8 +5,10 @@ RFC_DIR ?= rfc
 
 .PHONY: check lint site digests
 
+# make check              -> full gate over $(RFC_DIR) (the verdict of record)
+# make check FILES="..."  -> spot run over the named files (advisory)
 check:
-	skill/rfc-check $(RFC_DIR)
+	skill/rfc-check $(if $(FILES),$(FILES),$(RFC_DIR))
 
 lint:
 	@set -e; for f in $(RFC_DIR)/draft-*.md $(RFC_DIR)/[0-9]*.md; do \

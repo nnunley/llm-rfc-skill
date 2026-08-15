@@ -23,6 +23,7 @@ without this one knowing.
 - draft-ndn-fsm-session-00 — FSM Session State for RFC-Governed Skills (Experimental)
 - draft-ndn-cross-repo-00 — Cross-Repository RFCs and Dependencies (Experimental)
 - draft-ndn-feedback-registration-00 — Feedback Registration for RFC Series (BCP)
+- draft-ndn-conformance-execution-00 — Executing Conformance: the Full Gate and Spot Tests (Experimental)
 - draft-claude-adversarial-review-00 — Adversarial Spec Review (Experimental — adopted: the BCP mandates review before LAST-CALL)
 
 ## Drafts — candidate practices (external methodologies, converted for adoption)
