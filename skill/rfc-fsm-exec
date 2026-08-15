@@ -7,8 +7,22 @@
 # Session mode (lightweight persisted state, progressive disclosure):
 #   rfc-fsm-exec <file.fsm> --state FILE            where am I / what may I do
 #   rfc-fsm-exec <file.fsm> --state FILE <target>   advance; record on success
+#   rfc-fsm-exec <file.fsm> --state FILE <target> --why "rationale"
+#                                       advance, recording branch rationale
 #   rfc-fsm-exec <file.fsm> --state FILE --attach "key: value"
 #                                       attach evidence to the current state
+#   rfc-fsm-exec <file.fsm> --state FILE --audit
+#                                       re-verify the whole ledger (see below)
+# Guarded transitions (guard A -> B: key...) refuse to advance until the
+# named evidence keys are attached to the CURRENT state — the machine
+# withholds the next step until the work's evidence exists. On a legal
+# advance inside a git repository the executor auto-attaches
+# 'anchor: <HEAD sha>', lacing the run into real history. --audit
+# re-verifies everything the ledger claims: the path against the machine,
+# every guard retroactively satisfied, every commit:/anchor: object
+# resolvable in the repository, and anchors ordered by ancestry — a
+# ledger that is hard to forge without doing the work, because its
+# claims point at artifacts that only exist if the work happened.
 # The state file is a RUN RECORD: flush-left lines are the walked path
 # (a witness: line 1 must be the machine's initial state, every
 # consecutive pair a declared transition); indented 'key: value' lines
@@ -26,11 +40,15 @@ set -u
 
 STATE_FILE=""
 ATTACH=""
+WHY=""
+AUDIT=0
 ARGS=()
 while [ $# -gt 0 ]; do
     case "$1" in
         --state)  STATE_FILE="$2"; shift 2 ;;
         --attach) ATTACH="$2"; shift 2 ;;
+        --why)    WHY="$2"; shift 2 ;;
+        --audit)  AUDIT=1; shift ;;
         *)        ARGS+=("$1"); shift ;;
     esac
 done
@@ -67,6 +85,64 @@ if [[ -n "$STATE_FILE" ]]; then
         exit 2
     fi
     cur=$(awk 'NF && $0 !~ /^#/ && $0 !~ /^[ \t]/ { last = $0 } END { print last }' "$STATE_FILE")
+    # evidence keys attached to the CURRENT state (for guard checks)
+    cur_keys=$(awk '
+        /^[^#[:space:]]/ { split("", have); next }
+        /^[ \t]+[a-z][a-z0-9-]*:/ { k = $1; sub(/:$/, "", k); have[k] = 1 }
+        END { for (k in have) printf "%s ", k }
+    ' "$STATE_FILE")
+    if [[ "$AUDIT" = 1 ]]; then
+        # re-verify everything the ledger claims (path already validated above)
+        fails=0; steps=0; anchors=0; prev_anchor=""
+        guard_specs=$(awk '{ sub(/[[:space:]]*;.*$/, "") }
+            $1 == "guard" && $3 == "->" && $4 ~ /:$/ {
+                t = $4; sub(/:$/, "", t); printf "%s %s", $2, t
+                for (i = 5; i <= NF; i++) printf " %s", $i
+                print ""
+            }' "$f")
+        in_repo=0
+        git rev-parse --git-dir >/dev/null 2>&1 && in_repo=1
+        state=""; keys=" "
+        check_edge() { # from to keys-of-from
+            local req k
+            req=$(printf '%s\n' "$guard_specs" | awk -v a="$1" -v b="$2" '$1 == a && $2 == b { for (i = 3; i <= NF; i++) printf "%s ", $i }')
+            for k in $req; do
+                case "$3" in *" $k "*) ;; *) echo "audit: guard $1 -> $2 unmet in ledger — missing $k:"; fails=1 ;; esac
+            done
+        }
+        while IFS= read -r line; do
+            case "$line" in
+                '#'*|'') ;;
+                ' '*|'	'*)
+                    k="${line#"${line%%[![:space:]]*}"}"; v="${k#*: }"; k="${k%%:*}"
+                    keys="$keys$k "
+                    if [[ "$k" = "commit" || "$k" = "anchor" ]]; then
+                        if [[ "$in_repo" = 1 ]]; then
+                            if ! git cat-file -e "$v^{commit}" 2>/dev/null; then
+                                echo "audit: $k: $v does not resolve in this repository"; fails=1
+                            elif [[ "$k" = "anchor" ]]; then
+                                anchors=$((anchors + 1))
+                                if [[ -n "$prev_anchor" ]] && ! git merge-base --is-ancestor "$prev_anchor" "$v" 2>/dev/null; then
+                                    echo "audit: anchors out of ancestry order: $prev_anchor then $v"; fails=1
+                                fi
+                                prev_anchor="$v"
+                            fi
+                        fi
+                    fi ;;
+                *)  # a transition into $line: the guard binds to the state
+                    # being LEFT, whose evidence has just finished accumulating
+                    [[ -n "$state" ]] && check_edge "$state" "$line" "$keys"
+                    state="$line"; keys=" "; steps=$((steps + 1)) ;;
+            esac
+        done < "$STATE_FILE"
+        [[ "$in_repo" = 1 ]] || echo "audit: no repository here — git-anchored checks skipped"
+        if [[ "$fails" = 0 ]]; then
+            echo "audit: ok ($steps step(s), $anchors anchor(s) verified)"
+            exit 0
+        fi
+        echo "audit: FAIL"
+        exit 1
+    fi
     if [[ -n "$ATTACH" ]]; then
         [[ -z "$target" ]] || { echo "rfc-fsm-exec: --attach takes no transition target" >&2; exit 2; }
         [[ "$ATTACH" =~ ^[a-z][a-z0-9-]*:\ .+$ ]] || { echo "rfc-fsm-exec: evidence must be 'key: value'" >&2; exit 2; }
@@ -84,9 +160,26 @@ else
 fi
 f="$1"; cur="$2"; target="${3:-}"
 
-out=$(awk -v cur="$cur" -v target="$target" '
+out=$(awk -v cur="$cur" -v target="$target" -v cur_keys="${cur_keys:-}" '
+    function guard_missing(a, b,   req, m, i, miss) {
+        req = greq[a SUBSEP b]
+        if (req == "") return ""
+        m = split(req, ks, " "); miss = ""
+        for (i = 1; i <= m; i++)
+            if (index(" " cur_keys " ", " " ks[i] " ") == 0) miss = miss ks[i] " "
+        sub(/ $/, "", miss)
+        return miss
+    }
     { sub(/[[:space:]]*;.*$/, "") }
     /^[[:space:]]*$/ { next }
+    $1 == "guard" && NF >= 5 && $3 == "->" && $4 ~ /:$/ {
+        gt = $4; sub(/:$/, "", gt)
+        req = ""
+        for (i = 5; i <= NF; i++) req = req $i " "
+        sub(/ $/, "", req)
+        greq[$2 SUBSEP gt] = req
+        next
+    }
     $1 == "initial"  { init = $2; states[$2] = 1; next }
     $1 == "terminal" { for (i = 2; i <= NF; i++) { term[$i] = 1; states[$i] = 1 } next }
     $1 == "note" {
@@ -113,12 +206,22 @@ out=$(awk -v cur="$cur" -v target="$target" '
                 printf "VIOLATION: %s carries no deadline — timeout is undefined here\n", cur
                 exit 1
             }
+            miss = guard_missing(cur, dlt[cur])
+            if (miss != "") {
+                printf "GUARD: %s -> %s requires evidence: %s — missing: %s\n", cur, dlt[cur], greq[cur SUBSEP dlt[cur]], miss
+                exit 1
+            }
             printf "LEGAL: %s -> %s (timeout handler%s)\n", cur, dlt[cur], (cur in dlts ? "; deadline " dlts[cur] : "")
             if (dlt[cur] in notes) printf "entering %s: %s\n", dlt[cur], notes[dlt[cur]]
             exit 0
         }
         if (target != "") {
             for (i = 1; i <= n; i++) if (nxt[i] == target) {
+                miss = guard_missing(cur, target)
+                if (miss != "") {
+                    printf "GUARD: %s -> %s requires evidence: %s — missing: %s\n", cur, target, greq[cur SUBSEP target], miss
+                    exit 1
+                }
                 printf "LEGAL: %s -> %s\n", cur, target
                 if (target in notes) printf "entering %s: %s\n", target, notes[target]
                 exit 0
@@ -136,7 +239,12 @@ out=$(awk -v cur="$cur" -v target="$target" '
             print "permitted transitions:"
             for (i = 1; i <= n; i++) {
                 if (nxt[i] == "") continue
-                printf "  %s -> %s%s\n", cur, nxt[i], ((nxt[i] in notes) ? "   [" notes[nxt[i]] "]" : "")
+                gtxt = ""
+                if ((cur SUBSEP nxt[i]) in greq) {
+                    miss = guard_missing(cur, nxt[i])
+                    gtxt = (miss == "") ? "   [guard satisfied: " greq[cur SUBSEP nxt[i]] "]" : "   [guarded — missing: " miss "]"
+                }
+                printf "  %s -> %s%s%s\n", cur, nxt[i], gtxt, ((nxt[i] in notes) ? "   [" notes[nxt[i]] "]" : "")
             }
         }
         print "anything not listed above is a process violation."
@@ -144,9 +252,16 @@ out=$(awk -v cur="$cur" -v target="$target" '
 ' "$f")
 rc=$?
 [ -n "$out" ] && printf '%s\n' "$out"
-# session mode: record a successful advance (timeout resolves to its handler)
+# session mode: record a successful advance (timeout resolves to its
+# handler); branch rationale lands as why:, and inside a repository the
+# advance is anchored to HEAD — lacing the ledger into real history
 if [[ -n "$STATE_FILE" && -n "$target" && "$rc" -eq 0 ]]; then
     resolved=$(printf '%s\n' "$out" | sed -n 's/^LEGAL: .* -> \([A-Za-z0-9_-]*\).*$/\1/p' | head -1)
-    [[ -n "$resolved" ]] && printf '%s\n' "$resolved" >> "$STATE_FILE"
+    if [[ -n "$resolved" ]]; then
+        printf '%s\n' "$resolved" >> "$STATE_FILE"
+        [[ -n "$WHY" ]] && printf '  why: %s\n' "$WHY" >> "$STATE_FILE"
+        head_sha=$(git rev-parse --short=12 HEAD 2>/dev/null || true)
+        [[ -n "$head_sha" ]] && printf '  anchor: %s\n' "$head_sha" >> "$STATE_FILE"
+    fi
 fi
 exit "$rc"

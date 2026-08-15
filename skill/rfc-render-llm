@@ -40,8 +40,8 @@ if [ "${1:-}" = "--verify" ]; then
                  next }
         !skip { print }
     ' "$src")
-    src_m=$(printf '%s\n' "$kept_src" | grep -o '\[R-[a-z0-9-]*\]' | sort -u)
-    dig_m=$(grep -o '\[R-[a-z0-9-]*\]' "$dig" | sort -u)
+    src_m=$(printf '%s\n' "$kept_src" | grep -o '\[R-[a-z0-9-][a-z0-9-]*\]' | sort -u)
+    dig_m=$(grep -o '\[R-[a-z0-9-][a-z0-9-]*\]' "$dig" | sort -u)
     for m in $src_m; do
         printf '%s\n' "$dig_m" | grep -qF "$m" || { echo "digest missing marker: $m"; fails=1; }
     done

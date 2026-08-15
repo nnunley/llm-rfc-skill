@@ -140,15 +140,16 @@ MAY be deleted, committed, or cited (a Changelog or consensus row MAY
 reference a run) as the process outcome warrants; nothing in this
 document requires committing it.
 
-An RFC is itself a SUBSET of run-record functionality — the specialized,
-human-authored view of a run over the lifecycle machine: the masthead
-`Status:` is the current state, the document's git history is the walked
-path, and Changelog entries are the attachments. A document's history is
-therefore derivable as a run record and checkable with the same witness
-machinery — validating a document's lifecycle transitions across a
-commit range is validating its derived run — and any future process
-tooling SHOULD build on the run record as the primitive rather than on
-document-specific machinery.
+An RFC's LIFECYCLE TRAJECTORY is derivable as a run-record path — the
+masthead `Status:` as current state, the Status-changing commits as the
+walked path — and MAY be validated with the same witness machinery.
+That narrow derivability is the whole claim: an earlier revision
+asserted the document itself as a subset of run-record functionality,
+withdrawn on adversarial review (the record models the lifecycle
+envelope, not the normative content; a document's defining affordances
+— immutability, markers, corpus — are outside the record's model, and a
+run's defining affordances — disposability, concurrency — are denied to
+documents).
 
 ```transcript @R-run-record
 $ printf 'initial RESEARCH\nRESEARCH -> INTERVIEW\nINTERVIEW -> SYNTHESIS\nterminal SYNTHESIS\n' > w.fsm
@@ -171,6 +172,52 @@ $ rfc-fsm-exec w.fsm --state run | grep -c "state: INTERVIEW"
 $ rfc-fsm-exec w.fsm --state run --attach "no colon here"
 rfc-fsm-exec: evidence must be 'key: value'
 ? 2
+```
+
+### The ledger resists forgery
+
+A run record must be hard to forge WITHOUT DOING THE WORK. Three
+mechanisms make its claims point at artifacts that only exist if the
+work happened. Guarded transitions (the fsm `guard` statement) make the
+executor REFUSE to advance until the required evidence keys are attached
+to the current state — advance is withheld, not warned. On every legal
+advance inside a repository the executor auto-attaches
+`anchor: <HEAD sha>`, lacing the run into real history. And
+`--audit` MUST re-verify everything the ledger claims: the path against
+the machine, every guard retroactively satisfied from the recorded
+attachments, every `commit:` and `anchor:` value resolvable in the
+repository, and anchors ordered by ancestry — fabricating that sequence
+means fabricating git history. Branch rationale rides the same rails:
+advancing with `--why "<rationale>"` records `why:` under the entered
+state, so which alternative was taken is the path and why is the
+ledger. [R-run-audit]
+
+```transcript @R-run-audit
+$ git init -q .
+$ git commit -q --allow-empty -m seed
+$ cat > plan.fsm <<'EOF'
+> initial DESIGN
+> DESIGN -> BUILD
+> BUILD -> DONE
+> terminal DONE
+> guard DESIGN -> BUILD: decision
+> EOF
+$ rfc-fsm-exec plan.fsm --state run >/dev/null
+$ rfc-fsm-exec plan.fsm --state run BUILD
+GUARD: DESIGN -> BUILD requires evidence: decision — missing: decision
+? 1
+$ rfc-fsm-exec plan.fsm --state run --attach "decision: chose the simple path" >/dev/null
+$ rfc-fsm-exec plan.fsm --state run BUILD --why "guard met" >/dev/null
+$ rfc-fsm-exec plan.fsm --state run --audit
+audit: ok (2 step(s), 1 anchor(s) verified)
+$ cat > forged <<'EOF'
+> DESIGN
+> BUILD
+> EOF
+$ rfc-fsm-exec plan.fsm --state forged --audit
+audit: guard DESIGN -> BUILD unmet in ledger — missing decision:
+audit: FAIL
+? 1
 ```
 
 ### Scope
@@ -241,3 +288,10 @@ files MUST NOT contain secrets or PII — state names only.
   of run-record functionality — Status is the current state, git history
   the path, Changelog the attachments — so document lifecycles are
   derivable runs, checkable by the same witness.
+- 2026-08-14: the ledger hardened per the author's forge-resistance
+  requirement — guarded advance (refusal, not warning), automatic HEAD
+  anchoring inside repositories, branch rationale via --why, and --audit
+  re-deriving every claim (path, guards, commit/anchor resolution,
+  anchor ancestry) so forging the record costs approximately doing the
+  work [R-run-audit]. The RFC-as-subset claim withdrawn on adversarial
+  review, narrowed to lifecycle-trajectory derivability.

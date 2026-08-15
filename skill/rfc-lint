@@ -391,6 +391,15 @@ lint_file() {
                 dl[s] = t
                 next
             }
+            if (w[i0] == "guard" && n - i0 + 1 >= 5 && w[i0+2] == "->" && w[i0+3] ~ /:$/) {
+                gf = w[i0+1]; gt = w[i0+3]; sub(/:$/, "", gt)
+                gkey = gf SUBSEP gt
+                if (gkey in guards) print "duplicate guard for " gf " -> " gt
+                gok = 1
+                for (i = i0+4; i <= n; i++) if (w[i] !~ /^[a-z][a-z0-9-]*$/) { print "guard key must be a lowercase identifier: " w[i]; gok = 0 }
+                if (gok) { guards[gkey] = 1; gfrom[gkey] = gf; gto[gkey] = gt }
+                next
+            }
             if (n - i0 + 1 == 3 && w[i0+1] == "->") {
                 from = w[i0]; to = w[i0+2]
                 states[from] = 1; states[to] = 1
@@ -405,6 +414,7 @@ lint_file() {
         function delete_arrays(   k) {
             split("", states); split("", term); split("", trans)
             split("", outdeg); split("", adj); split("", seen); split("", q); split("", noted); split("", dl)
+            split("", guards); split("", gfrom); split("", gto)
         }
         function finish(   qi, qn, j, m, a, s) {
             if (init == "") { print "missing initial state"; return }
@@ -419,6 +429,9 @@ lint_file() {
             for (s in states) if (!(s in term) && !(s in outdeg)) print "state " s " is a dead end (no outgoing transitions, not terminal)"
             for (s in noted) if (!(s in states)) print "note references undeclared state " s
             if ("timeout" in states) print "state name timeout is reserved"
+            for (gkey in guards)
+                if (!((gfrom[gkey] SUBSEP gto[gkey]) in trans))
+                    print "guard on " gfrom[gkey] " -> " gto[gkey] " which is not a declared transition"
             for (s in dl) {
                 if (!(s in states)) { print "deadline references undeclared state " s; continue }
                 if (s in term) { print "terminal state " s " cannot carry a deadline"; continue }

@@ -1,0 +1,132 @@
+#!/usr/bin/env bash
+# rfc-flow — the generic flow runner: vocabularies are DATA, not programs.
+# Usage: rfc-flow <vocab-file> <flow-file>
+#
+# A vocabulary declares, as data, how each flow statement maps to a
+# command and an expectation — the SLIM shape: a fixed, tiny instruction
+# model executed by one small runner, so no per-domain fixture program
+# exists. Vocab directives:
+#   env repo                      provision an isolated workspace with a
+#                                 seeded git repository
+#   set <NAME> <text>             a substitution variable for templates
+#   collect <stmt> >> <file>      statements named <stmt> append their
+#                                 remainder to <file> (e.g. machine assembly)
+#   boot <command...>             run once, after collections, before the
+#                                 first mapped statement (e.g. validation)
+#   <pattern> => <template> [! exit N] [! out <text>]
+#                                 map a statement to a command; pattern
+#                                 words match literally, {x} captures one
+#                                 word, {x*} captures the rest; templates
+#                                 substitute {x}, {x*}, and set-variables.
+# Flow statements are matched against rules in declaration order; the
+# first failing statement names the verdict (exit 1). Captures MUST NOT
+# contain quote characters — the runner refuses them rather than risk
+# mis-quoting into the compiled instruction list.
+set -u
+
+V="${1:?usage: rfc-flow <vocab> <flow>}"
+F="${2:?usage: rfc-flow <vocab> <flow>}"
+[ -f "$V" ] || { echo "rfc-flow: vocab $V not found" >&2; exit 2; }
+[ -f "$F" ] || { echo "rfc-flow: flow $F not found" >&2; exit 2; }
+SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+ws=$(mktemp -d)
+trap 'rm -rf "$ws"' EXIT
+
+script=$(awk -v vocab="$V" '
+BEGIN {
+    nrules = 0; nsets = 0; ncollect = 0; nboot = 0; envrepo = 0
+    while ((getline line < vocab) > 0) {
+        if (line ~ /^[[:space:]]*(#|$)/) continue
+        n = split(line, w, /[[:space:]]+/)
+        if (w[1] == "env" && w[2] == "repo") { envrepo = 1; continue }
+        if (w[1] == "set") {
+            name = w[2]; val = line
+            sub(/^[[:space:]]*set[[:space:]]+[A-Za-z_]+[[:space:]]+/, "", val)
+            setn[++nsets] = name; setv[nsets] = val; continue
+        }
+        if (w[1] == "collect" && w[3] == ">>") { cstmt[++ncollect] = w[2]; cfile[ncollect] = w[4]; continue }
+        if (w[1] == "boot") { bcmd = line; sub(/^[[:space:]]*boot[[:space:]]+/, "", bcmd); boot[++nboot] = bcmd; continue }
+        if (index(line, " => ") > 0) {
+            nrules++
+            pat[nrules] = substr(line, 1, index(line, " => ") - 1)
+            rest = substr(line, index(line, " => ") + 4)
+            rexit[nrules] = 0; rout[nrules] = ""
+            nparts = split(rest, parts, / ! /)
+            rtpl[nrules] = parts[1]
+            for (i = 2; i <= nparts; i++) {
+                if (parts[i] ~ /^exit /) { sub(/^exit /, "", parts[i]); rexit[nrules] = parts[i] + 0 }
+                else if (parts[i] ~ /^out /) { sub(/^out /, "", parts[i]); rout[nrules] = parts[i] }
+            }
+            continue
+        }
+        printf "echo \"rfc-flow: vocab: not a directive: %s\"; exit 2\n", line
+        exit
+    }
+    print "set -u"
+    print "fail() { echo \"flow: line $1: $2\"; exit 1; }"
+    if (envrepo) {
+        print "export GIT_CONFIG_NOSYSTEM=1 HOME=\"$PWD\" XDG_CONFIG_HOME=\"$PWD/.config\""
+        print "git init -q . && git config user.name rfc-flow && git config user.email rfc-flow@rfc"
+        print "git commit -q --allow-empty -m seed"
+    }
+    booted = 0
+}
+function subst(s, k, v,   out) { out = s; gsub("\\{" k "\\}", v, out); return out }
+function expand(s,   i) {
+    for (i = 1; i <= nsets; i++) s = subst(s, setn[i], setv[i])
+    return s
+}
+function emit_boot(   i) {
+    if (booted) return
+    booted = 1
+    for (i = 1; i <= nboot; i++)
+        printf "%s >/dev/null 2>&1 || fail %d \"boot failed: %s\"\n", expand(boot[i]), NR, boot[i]
+}
+{
+    line = $0
+    if (line ~ /^[[:space:]]*(#|$)/) next
+    n = split(line, s, /[[:space:]]+/)
+    for (c = 1; c <= ncollect; c++)
+        if (s[1] == cstmt[c]) {
+            # collected text never enters command position; only double
+            # quotes and dollars would break the emitted append
+            if (line ~ /["$`]/) { printf "fail %d \"collected text may not contain quote, dollar, or backtick characters\"\n", NR; exit }
+            rem = line; sub("^[[:space:]]*" s[1] "[[:space:]]+", "", rem)
+            printf "printf \047%%s\\n\047 \"%s\" >> %s\n", rem, cfile[c]
+            next
+        }
+    if (line ~ /['\''"$`]/) { printf "fail %d \"quote, dollar, and backtick characters are not permitted in flow statements\"\n", NR; exit }
+    emit_boot()
+    for (r = 1; r <= nrules; r++) {
+        np = split(pat[r], p, /[[:space:]]+/)
+        ok = 1; tpl = rtpl[r]; outw = rout[r]; si = 1
+        for (pi = 1; pi <= np && ok; pi++) {
+            if (p[pi] ~ /^\{[a-z]+\*\}$/) {
+                name = p[pi]; gsub(/[{}*]/, "", name)
+                cap = ""
+                for (; si <= n; si++) cap = cap (cap == "" ? "" : " ") s[si]
+                tpl = subst(tpl, name "\\*", cap); outw = subst(outw, name "\\*", cap)
+            } else if (p[pi] ~ /^\{[a-z]+\}$/) {
+                if (si > n) { ok = 0; break }
+                name = p[pi]; gsub(/[{}]/, "", name)
+                tpl = subst(tpl, name, s[si]); outw = subst(outw, name, s[si]); si++
+            } else {
+                if (si > n || s[si] != p[pi]) { ok = 0; break }
+                si++
+            }
+        }
+        if (ok && si == n + 1) {
+            tpl = expand(tpl); outw = expand(outw)
+            printf "_out=$(%s 2>&1); _rc=$?\n", tpl
+            printf "[ \"$_rc\" -eq %d ] || fail %d \"%s — exit $_rc: $_out\"\n", rexit[r], NR, line
+            if (outw != "")
+                printf "case \"$_out\" in *\"%s\"*) ;; *) fail %d \"%s — expected output mentioning: %s\";; esac\n", outw, NR, line, outw
+            next
+        }
+    }
+    printf "fail %d \"not a statement of this vocabulary: %s\"\n", NR, line
+}
+' "$F")
+
+( cd "$ws" && export PATH="$SELF_DIR:$PATH" && eval "$script" )

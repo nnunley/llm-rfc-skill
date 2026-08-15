@@ -133,7 +133,51 @@ the adapter ever runs — a path witness, generalizing the single-edge
 transition witnesses of the fsm type. A flow that walks an illegal path
 fails structurally, engine untouched.
 
-### The bootstrap adapter
+### The flow runner: vocabularies are data
+
+A flow vocabulary MUST NOT require a per-domain adapter program — that
+is the fixture pattern this document rejects, and early practice showed
+it regrowing one bespoke executable at a time. Instead, ONE generic
+runner (`rfc-flow <vocab> <flow>`) executes any vocabulary declared as
+DATA: rule lines map a statement pattern to a command template and an
+expectation (`<pattern> => <template> [! exit N] [! out <text>]`, with
+`{x}` capturing one word and `{x*}` the rest), plus three directives —
+`env repo` (isolated workspace with a seeded repository), `set`
+(template variables), `collect` (statements that assemble a file, e.g. a
+machine), and `boot` (run once before the first mapped statement). The
+runner compiles vocab plus flow into a checked instruction list and
+executes it — the SLIM shape honestly: a fixed, tiny instruction model,
+one small runner, vocabularies as declarations. A type registration
+shrinks to a one-line adapter delegating to the runner; genuinely
+domain-specific side effects live in the vocabulary's templates, as
+data, pinned and reviewed like all evidence machinery. Tool-native flow
+consumption (a tool executing its own vocabulary directly) is a
+sanctioned equivalent where a vocabulary mirrors one tool's verbs.
+[R-vocab-data]
+
+```transcript @R-vocab-data
+$ cat > demo.vocab <<'EOF'
+> set F data.txt
+> put {w*} => sh -c 'printf "%s\n" "$1" >> {F}' _ "{w*}" ! exit 0
+> has {w*} => grep -q "{w*}" {F} ! exit 0
+> lacks {w*} => grep -q "{w*}" {F} ! exit 1
+> EOF
+$ cat > good.flow <<'EOF'
+> put alpha
+> has alpha
+> lacks beta
+> EOF
+$ rfc-flow demo.vocab good.flow
+? 0
+$ cat > bad.flow <<'EOF'
+> put alpha
+> lacks alpha
+> EOF
+$ rfc-flow demo.vocab bad.flow 2>&1 | grep -c "flow: line 2: lacks alpha"
+1
+$ rfc-flow demo.vocab bad.flow >/dev/null 2>&1
+? 1
+```
 
 Raw `transcript` blocks (shell replay under the hygiene sandbox) remain
 defined and remain the right tool in two places: evidence about shell
@@ -256,3 +300,9 @@ hygiene sandbox remains the floor, not a security boundary.
   this document's demonstration is project-free. gi-session remains
   cited in References as the expected first real adopter, in the
   git-issue-tracker series.
+- 2026-08-14: fixture regression corrected on author review — a bespoke
+  bash adapter per vocabulary is FitNesse's fixture pattern re-derived,
+  which this document rejects. The generic flow runner (rfc-flow) lands
+  with vocabularies as data [R-vocab-data]; the plan-run vocabulary is
+  the first conversion (declaration file plus one-line registration),
+  and tool-native flow consumption is sanctioned as the equivalent form.

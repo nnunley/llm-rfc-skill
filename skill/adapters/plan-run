@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# plan-run — type registration only: the vocabulary is data
+# (vocabs/plan-run.vocab), the runner is generic (rfc-flow). No fixture.
+d="$(cd "$(dirname "$0")/.." && pwd)"
+exec "$d/rfc-flow" "$d/vocabs/plan-run.vocab" "${1:?usage: plan-run <file>}"

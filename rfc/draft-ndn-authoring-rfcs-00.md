@@ -240,6 +240,25 @@ state name timeout is reserved
 ? 1
 ```
 
+A transition MAY be guarded: `guard <from> -> <to>: <key> ...` declares
+that advancing that edge REQUIRES evidence under the named keys attached
+to the FROM state's run record — the machine withholds the next step
+until the work's evidence exists. Guard keys are lowercase identifiers;
+a guard MUST name a declared transition. Guards are evidence
+requirements, not engine hooks: what a key's value proves is the run
+machinery's concern (see the fsm session document), keeping the machine
+engine-free. [R-fsm-guard]
+
+```transcript @R-fsm-guard
+$ printf 'initial A\nA -> B\nterminal B\nguard A -> B: test\n' > g.fsm
+$ rfc-run --type fsm g.fsm
+? 0
+$ printf 'initial A\nA -> B\nterminal B\nguard A -> C: test\n' > bad.fsm
+$ rfc-run --type fsm bad.fsm
+guard on A -> C which is not a declared transition
+? 1
+```
+
 The fsm notation is exactly this grammar; a line matching no production
 is an error, and the structural rules above (single initial, reachability,
 terminal closure, deadline handler legality) apply on top of it.
@@ -248,12 +267,14 @@ terminal closure, deadline handler legality) apply on top of it.
 ```abnf
 fsm        = *( fsm-line LF )
 fsm-line   = [ ws ] [ stmt ] [ ws ] [ comment ]
-stmt       = initial / transition / terminals / note-stmt / deadline
+stmt       = initial / transition / terminals / note-stmt / deadline / guard-stmt
 initial    = %s"initial" ws state
 transition = state ws "->" ws state
 terminals  = %s"terminal" 1*( ws state )
 note-stmt  = %s"note" ws state ":" ws note-text
 deadline   = %s"deadline" ws state [ ws instant ] ws "->" ws state
+guard-stmt = %s"guard" ws state ws "->" ws state ":" 1*( ws guard-key )
+guard-key  = 1*( lower / DIGIT / "-" )      ; evidence key required on FROM
 state      = 1*( ALPHA / DIGIT / "-" / "_" )
 instant    = date [ time / zone ]           ; bare date = midnight UTC
 date       = 4DIGIT "-" 2DIGIT "-" 2DIGIT   ; date+zone = midnight there
@@ -773,3 +794,8 @@ constrained is excluded from judging its own conformance.
   OPTIONAL reviewed-at revision anchor, three transport profiles carry
   dispositions into the record, and registration outlives publication
   via the series concerns ledger.
+- 2026-08-14: guarded transitions added to the fsm vocabulary — `guard
+  <from> -> <to>: <key>...` withholds an edge until the named evidence
+  keys are attached to the FROM state's run record [R-fsm-guard]; the
+  grammar gains the production, and guards stay engine-free (evidence
+  requirements, not hooks).

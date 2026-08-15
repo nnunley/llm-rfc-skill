@@ -1,0 +1,16 @@
+# plan-run — the executable-plans vocabulary, as DATA
+# (draft-ndn-executable-plans-00). Statements mirror the fsm executor's
+# verbs one-to-one; rfc-flow is the runner; no fixture program exists.
+env repo
+set X rfc-fsm-exec plan.fsm --state run
+collect machine >> plan.fsm
+boot rfc-run --type fsm plan.fsm
+boot rfc-fsm-exec plan.fsm --state run
+refuse {t} missing {k*} => {X} {t} ! exit 1 ! out missing: {k*}
+attach {kv*} => {X} --attach "{kv*}" ! exit 0
+advance {t} why: {w*} => {X} {t} --why "{w*}" ! exit 0
+advance {t} => {X} {t} ! exit 0
+at {s} => {X} ! exit 0 ! out state: {s}
+work {m*} => sh -c 'printf "%s\n" "$1" > w.txt && git add -A && git commit -qm "$1" && rfc-fsm-exec plan.fsm --state run --attach "commit: $(git rev-parse --short=12 HEAD)"' _ "{m*}" ! exit 0
+audit ok => {X} --audit ! exit 0
+audit fail {x*} => {X} --audit ! exit 1 ! out {x*}

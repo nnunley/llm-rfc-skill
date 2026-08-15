@@ -18,6 +18,15 @@ problems=$(awk '
         if (s in dl) print "duplicate deadline for " s
         dl[s] = t; next
     }
+    $1 == "guard" && NF >= 5 && $3 == "->" && $4 ~ /:$/ {
+        gf = $2; gt = $4; sub(/:$/, "", gt)
+        key = gf SUBSEP gt
+        if (key in guards) print "duplicate guard for " gf " -> " gt
+        ok = 1
+        for (i = 5; i <= NF; i++) if ($i !~ /^[a-z][a-z0-9-]*$/) { print "guard key must be a lowercase identifier: " $i; ok = 0 }
+        if (ok) { guards[key] = 1; gfrom[key] = gf; gto[key] = gt }
+        next
+    }
     NF == 3 && $2 == "->" {
         states[$1] = 1; states[$3] = 1
         key = $1 SUBSEP $3
@@ -39,6 +48,9 @@ problems=$(awk '
         for (s in states) if (!(s in term) && !(s in outdeg)) print "dead end: " s
         for (s in noted) if (!(s in states)) print "note references undeclared state " s
         if ("timeout" in states) print "state name timeout is reserved"
+        for (k in guards)
+            if (!((gfrom[k] SUBSEP gto[k]) in trans))
+                print "guard on " gfrom[k] " -> " gto[k] " which is not a declared transition"
         for (s in dl) {
             if (!(s in states)) { print "deadline references undeclared state " s; continue }
             if (s in term) { print "terminal state " s " cannot carry a deadline"; continue }
