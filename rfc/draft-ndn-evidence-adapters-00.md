@@ -196,8 +196,9 @@ hygiene sandbox remains the floor, not a security boundary.
   https://github.com/rdaum/moor (crates/testing/moot).
 - **mdmoot** (Norman Nunley, Jr, 2026-01) — the markdown articulation
   of moot. The line-intent notation belongs to moot itself (`;` eval,
-  `=>` expected output, `%` error expectation, `@` directive — Ryan
-  Daum's vocabulary); the markdown form carrying it, with continuation
+  `=>` expected output, `%` error expectation, `@` directive), inherited
+  from the MOO server testing lineage upstream of mooR — authorship
+  predates both; the markdown form carrying it, with continuation
   lines for multiline content over a corpus of ~48 `.spec.md` files, is
   the contribution recovered here. The transcript notation's
   `$` / `>` / `?` family is the shell-vernacular sibling of that
