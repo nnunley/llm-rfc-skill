@@ -7,10 +7,16 @@
 # Session mode (lightweight persisted state, progressive disclosure):
 #   rfc-fsm-exec <file.fsm> --state FILE            where am I / what may I do
 #   rfc-fsm-exec <file.fsm> --state FILE <target>   advance; record on success
-# The state file is one state name per line — a path witness: line 1 must
-# be the machine's initial state and every consecutive pair a declared
-# transition. An absent/empty file initializes to the initial state. A
-# file recording an illegal path is rejected (exit 2). Only the CURRENT
+#   rfc-fsm-exec <file.fsm> --state FILE --attach "key: value"
+#                                       attach evidence to the current state
+# The state file is a RUN RECORD: flush-left lines are the walked path
+# (a witness: line 1 must be the machine's initial state, every
+# consecutive pair a declared transition); indented 'key: value' lines
+# beneath a state attach evidence to it (commits, decision summaries —
+# appended with --attach); lines beginning '#' are metadata (e.g. the
+# machine pin '# machine: <doc> @R-<tag> @ <sha>'). The executor walks
+# only the flush-left path. An absent/empty file initializes to the
+# initial state. A record with an illegal path is rejected (exit 2). Only the CURRENT
 # state's guidance and legal moves are ever disclosed — an agent needs no
 # view of the rest of the machine.
 # The machine is the spec's verified transition relation; this tool derives
@@ -19,11 +25,13 @@
 set -u
 
 STATE_FILE=""
+ATTACH=""
 ARGS=()
 while [ $# -gt 0 ]; do
     case "$1" in
-        --state) STATE_FILE="$2"; shift 2 ;;
-        *)       ARGS+=("$1"); shift ;;
+        --state)  STATE_FILE="$2"; shift 2 ;;
+        --attach) ATTACH="$2"; shift 2 ;;
+        *)        ARGS+=("$1"); shift ;;
     esac
 done
 set -- "${ARGS[@]:-}"
@@ -36,8 +44,9 @@ if [[ -n "$STATE_FILE" ]]; then
     target="${2:-}"
     machine_init=$(awk '{ sub(/[[:space:]]*;.*$/, "") } $1 == "initial" { print $2; exit }' "$f")
     [[ -n "$machine_init" ]] || { echo "rfc-fsm-exec: machine has no initial state" >&2; exit 2; }
-    if [[ ! -s "$STATE_FILE" ]]; then
-        printf '%s\n' "$machine_init" > "$STATE_FILE"
+    if [[ ! -s "$STATE_FILE" ]] || ! grep -q '^[^#]' "$STATE_FILE"; then
+        # empty file, or a token holding only metadata headers: initialize
+        printf '%s\n' "$machine_init" >> "$STATE_FILE"
         echo "session initialized at $machine_init"
     fi
     # the recorded path is a witness: validate before trusting it
@@ -47,7 +56,7 @@ if [[ -n "$STATE_FILE" ]]; then
         NF == 3 && $2 == "->" { trans[$1 SUBSEP $3] = 1; next }
         END {
             n = 0
-            while ((getline line < sf) > 0) if (line != "") path[++n] = line
+            while ((getline line < sf) > 0) if (line != "" && line !~ /^#/ && line !~ /^[ \t]/) path[++n] = line
             if (n == 0 || path[1] != init) { print "state file does not begin at " init; exit 1 }
             for (i = 2; i <= n; i++)
                 if (!((path[i-1] SUBSEP path[i]) in trans)) {
@@ -57,7 +66,14 @@ if [[ -n "$STATE_FILE" ]]; then
     ' "$f"; then
         exit 2
     fi
-    cur=$(awk 'NF { last = $0 } END { print last }' "$STATE_FILE")
+    cur=$(awk 'NF && $0 !~ /^#/ && $0 !~ /^[ \t]/ { last = $0 } END { print last }' "$STATE_FILE")
+    if [[ -n "$ATTACH" ]]; then
+        [[ -z "$target" ]] || { echo "rfc-fsm-exec: --attach takes no transition target" >&2; exit 2; }
+        [[ "$ATTACH" =~ ^[a-z][a-z0-9-]*:\ .+$ ]] || { echo "rfc-fsm-exec: evidence must be 'key: value'" >&2; exit 2; }
+        printf '  %s\n' "$ATTACH" >> "$STATE_FILE"
+        echo "attached to $cur — $ATTACH"
+        exit 0
+    fi
     if [[ -z "$target" ]]; then
         set -- "$f" "$cur"
     else

@@ -116,13 +116,70 @@ state file records an illegal path: B -> A
 ? 2
 ```
 
+### Run records: executing a process document as a workflow
+
+A process-style RFC is a workflow definition; launching an execution of
+it creates a **run record** — the session file grown into structured
+state. Design and other point-requirement RFCs prove behavior through
+their corpus; a process RFC's executions are witnessed by their runs.
+
+The record's structure stays line-oriented and glanceable: flush-left
+lines are the walked path (the witness, exactly as above); indented
+`key: value` lines beneath a state attach evidence gathered there —
+commits, decision summaries, artifact references — appended via
+`--attach` and validated for form; `#` lines are metadata, at minimum
+the machine pin (`# machine: <doc> @R-<tag> @ <sha>`). The executor
+walks only the flush-left path. [R-run-record]
+
+The record is SEMI-verifiable by construction, one band per line kind:
+the path is deterministically validated against the machine on every
+read; `commit:` attachments are resolvable against the repository when
+one is present; summaries are for the human glance. A run record is
+execution state, NOT an artifact by default — it lives with the work and
+MAY be deleted, committed, or cited (a Changelog or consensus row MAY
+reference a run) as the process outcome warrants; nothing in this
+document requires committing it.
+
+An RFC is itself a SUBSET of run-record functionality — the specialized,
+human-authored view of a run over the lifecycle machine: the masthead
+`Status:` is the current state, the document's git history is the walked
+path, and Changelog entries are the attachments. A document's history is
+therefore derivable as a run record and checkable with the same witness
+machinery — validating a document's lifecycle transitions across a
+commit range is validating its derived run — and any future process
+tooling SHOULD build on the run record as the primitive rather than on
+document-specific machinery.
+
+```transcript @R-run-record
+$ printf 'initial RESEARCH\nRESEARCH -> INTERVIEW\nINTERVIEW -> SYNTHESIS\nterminal SYNTHESIS\n' > w.fsm
+$ printf '# machine: draft-a-process-00 @R-authoring @ 1234abcd\n' > run
+$ rfc-fsm-exec w.fsm --state run | grep -c "session initialized at RESEARCH"
+1
+$ rfc-fsm-exec w.fsm --state run --attach "commit: 1234abcd"
+attached to RESEARCH — commit: 1234abcd
+$ rfc-fsm-exec w.fsm --state run INTERVIEW >/dev/null
+$ rfc-fsm-exec w.fsm --state run --attach "note: substrate and scope settled"
+attached to INTERVIEW — note: substrate and scope settled
+$ cat run
+# machine: draft-a-process-00 @R-authoring @ 1234abcd
+RESEARCH
+  commit: 1234abcd
+INTERVIEW
+  note: substrate and scope settled
+$ rfc-fsm-exec w.fsm --state run | grep -c "state: INTERVIEW"
+1
+$ rfc-fsm-exec w.fsm --state run --attach "no colon here"
+rfc-fsm-exec: evidence must be 'key: value'
+? 2
+```
+
 ### Scope
 
-The state file is per-execution scratch, not specification: it lives with
-the work (a branch, a worktree, a task directory), is not committed to
-the series, and MAY be deleted at any time — deleting it abandons the
-session, never the process. Concurrent sessions of the same machine use
-distinct files. Multi-agent handoff is the file handoff.
+The run record is per-execution state: it lives with the work (a
+branch, a worktree, a task directory) and MAY be deleted at any time —
+deleting it abandons the run, never the process. Concurrent runs of the
+same machine use distinct files. Multi-agent handoff is the file
+handoff.
 
 ## Alternatives Considered
 
@@ -172,3 +229,15 @@ files MUST NOT contain secrets or PII — state names only.
   (process BCP), closing the shadowing the session executor's
   pseudo-target introduced: a machine can no longer declare a state the
   executor cannot reach.
+- 2026-08-14: run records added on author review, through two
+  corrections. The first attempt (a committed "process token") was
+  rejected twice: the state should be a structured file carrying both
+  the walked path and per-state evidence (commits, decision summaries),
+  semi-verifiable by construction, and NOT an artifact by default —
+  executing a process document is launching a workflow, and the record
+  is the run's state. Evidence attaches via --attach as indented
+  key: value lines the executor skips; # lines carry the machine pin.
+  Finally, the relationship is inverted and stated: an RFC is a subset
+  of run-record functionality — Status is the current state, git history
+  the path, Changelog the attachments — so document lifecycles are
+  derivable runs, checkable by the same witness.
