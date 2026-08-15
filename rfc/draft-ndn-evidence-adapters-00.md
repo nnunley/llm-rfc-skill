@@ -67,13 +67,13 @@ how intent is checked belongs to the adapter. [R-adapter-contract]
 
 ```transcript @R-adapter-contract
 $ mkdir -p adapters
-$ printf '#!/bin/sh\ngrep -q "^! error" "$1"\n' > adapters/gi-session
-$ chmod +x adapters/gi-session
-$ printf 'add tracker /tmp/gi-rfc/a\nadd tracker /tmp/gi-rfc/b\n! error already registered\n' > sample.gi-session
-$ rfc-run --adapter-dir adapters --type gi-session sample.gi-session
+$ printf '#!/bin/sh\ngrep -q "^! error" "$1"\n' > adapters/demo-session
+$ chmod +x adapters/demo-session
+$ printf 'add tracker /tmp/gi-rfc/a\nadd tracker /tmp/gi-rfc/b\n! error already registered\n' > sample.demo-session
+$ rfc-run --adapter-dir adapters --type demo-session sample.demo-session
 ? 0
-$ printf 'add tracker /tmp/gi-rfc/a\n' > sample2.gi-session
-$ rfc-run --adapter-dir adapters --type gi-session sample2.gi-session
+$ printf 'add tracker /tmp/gi-rfc/a\n' > sample2.demo-session
+$ rfc-run --adapter-dir adapters --type demo-session sample2.demo-session
 ? 1
 ```
 
@@ -101,7 +101,7 @@ moot lesson is that a small declarative statement set does not. A
 vocabulary SHOULD fit on one screen; a vocabulary that needs conditionals
 is two vocabularies.
 
-Example (a `gi-session` vocabulary for a CLI issue tracker):
+Example (a `demo-session` vocabulary for a CLI issue tracker):
 
 ```
 add <name> <path>        register a repository
@@ -250,3 +250,9 @@ hygiene sandbox remains the floor, not a security boundary.
   Zoltán Nagy's 2eaa9225d (2024-05-30, in mooR, not upstream of it),
   and the annotation list is corrected against the moot README (% is
   command, & is eval-without-output, > is moot's own continuation).
+- 2026-08-14: the worked example vocabulary renamed gi-session ->
+  demo-session — the locality rule applied to examples: a
+  project-specific vocabulary name belongs to its project's series, and
+  this document's demonstration is project-free. gi-session remains
+  cited in References as the expected first real adopter, in the
+  git-issue-tracker series.
