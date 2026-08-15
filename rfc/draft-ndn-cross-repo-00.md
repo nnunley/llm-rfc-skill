@@ -58,6 +58,17 @@ repository that depends on it: citations, dependencies, and tracked
 offers all live in the consumer. Nothing in this specification requires
 a repository to enumerate, host, or aggregate the series of others.
 
+Decentralization does not dilute the core. The core's final contents
+are not yet fixed, but its center of gravity is the validation
+meta-process under development in this series — RFC validation: lint,
+evidence tangling and replay, declared corpus states, digest
+verification, machine validation. Whatever the finalized core contains,
+validation is in it: what makes a series a series is that its claims
+are checked, and that machinery is REQUIRED wherever a series runs,
+typically as its first pinned dependency. The asymmetry is the design:
+the validation core is universal, the practices layered above it are
+candidates each series adopts or declines on its own judgment.
+
 ### Cross-repository citations
 
 A published RFC in another repository is cited compactly on the same
@@ -256,3 +267,10 @@ actually reviewed.
   registration, no repository required to know about any other; all
   cross-repo relationships live in the consumer. The home series is a
   canonical exploration core, open, not exclusive, not a global catalog.
+- 2026-08-14: the core/practice asymmetry stated on author review —
+  decentralization governs who knows about whom, not what conformance
+  means. The core is not yet finalized; its named center of gravity is
+  the validation meta-process (RFC validation: lint, evidence replay,
+  declared corpus states, digest and machine verification), required
+  everywhere a series runs (typically the first pinned dependency),
+  while practices remain per-series choices.
