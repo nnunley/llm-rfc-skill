@@ -63,7 +63,14 @@ they reference — no block depends on another block, on this repository, or
 on the author's machine.
 
 Notation: lines beginning `$ ` are commands (shell state persists within a
-block); other lines are the expected output, compared byte-exactly; a line
+block); a line beginning `> ` continues the preceding command — PS2 — and the
+join PRESERVES the newline: the replayed input is byte-for-byte the
+multiline command as typed, reading exactly as a terminal displays it,
+and the command executes at the first non-continuation line. Heredoc provisioning SHOULD
+replace escape-laden single-line `printf` for multiline content; as a
+side effect, `> `-prefixed heredoc lines shield nested evidence fences
+from the markdown parser. Other lines are the expected output, compared
+byte-exactly; a line
 `? N` asserts that the immediately preceding command exited with status N,
 and absent a `?` line the status is asserted to be 0. Where real output
 embeds generated identifiers or timestamps, the transcript asserts through
@@ -78,9 +85,10 @@ is currently undefined.
 The transcript runner provides the skill's own tools on `PATH` for every
 corpus it replays; this document's transcripts rely on that provision
 for `rfc-lint` and `rfc-tangle`, checking conformance against THIS
-document. One notation limit is normative: an
-expected-output line beginning `$ ` cannot be expressed literally (it reads
-as a command) — such output is asserted through a projection instead.
+document. One notation limit is normative: an expected-output line
+beginning `$ ` or `> ` cannot be expressed literally (it reads as a
+command or a continuation) — such output is asserted through a
+projection instead.
 
 ### Document identity
 
@@ -282,7 +290,14 @@ $ rfc-lint draft-a-x-00.md 2>&1 | grep -c "no embedded evidence block tagged @R-
 ```
 
 ```transcript @R-tangle
-$ printf '# draft-a-x-00: X\n**Status:** DRAFT\nWorks. [R-w]\n```transcript @R-w\n$ true\n```\n' > draft-a-x-00.md
+$ cat > draft-a-x-00.md <<'EOF'
+> # draft-a-x-00: X
+> **Status:** DRAFT
+> Works. [R-w]
+> ```transcript @R-w
+> $ true
+> ```
+> EOF
 $ rfc-tangle draft-a-x-00.md out
 out/draft-a-x-00.w.transcript
 $ grep -c '^\$ true$' out/draft-a-x-00.w.transcript
@@ -734,3 +749,10 @@ constrained is excluded from judging its own conformance.
   this-document addition; rfc-commit-lint's attribution scan anchors to
   trailer position in the final paragraph, so body prose mentioning the
   words is never a false positive.
+- 2026-08-14: multiline commands made human-readable — the transcript
+  vocabulary gains PS2 continuation (`> ` lines join the preceding
+  command with their newlines preserved, executing at the first
+  non-continuation line), heredocs become the RECOMMENDED provisioning
+  form over escape-laden one-line printf, `> `-prefixed heredoc lines
+  shield nested evidence fences, and the `$ ` output limit extends to
+  `> `. The tangle exemplar is rewritten in the new form as its witness.

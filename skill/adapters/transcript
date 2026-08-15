@@ -2,14 +2,18 @@
 # transcript — the bootstrap adapter: raw shell replay under the hygiene
 # sandbox (env isolation, NOT a security boundary). One tangled file per
 # invocation; exit 0 conform / 1 violate, diagnostics name the failure.
-# Vocabulary: '$ cmd' runs; '? N' asserts exit status (absent = 0);
-# other lines are expected output, byte-exact.
+# Vocabulary: '$ cmd' runs; '> line' continues the preceding command
+# (PS2, joined with a newline — heredocs read as a terminal shows them);
+# '? N' asserts exit status (absent = 0); other lines are expected
+# output, byte-exact. A command executes at the first non-continuation
+# line that follows it.
 set -u
 f="${1:?usage: transcript <file>}"
 SANDBOX=/tmp/gi-rfc
 
 replay() {
-    local fails=0 expected="" last_exit=0 last_out="" line cmd want
+    local fails=0 expected="" last_exit=0 last_out="" line want
+    local pending="" have_pending=0
     flush() {
         if [ "$last_out" != "$(printf '%s' "$expected")" ]; then
             echo "DIFF $(basename "$f"):"
@@ -19,19 +23,34 @@ replay() {
         expected=""
         last_out=""
     }
+    run_pending() {
+        [ "$have_pending" = 1 ] || return 0
+        flush
+        last_out="$(eval "$pending" 2>&1)"; last_exit=$?
+        have_pending=0
+    }
     while IFS= read -r line || [ -n "$line" ]; do
         case "$line" in
-            '$ '*) flush
-                   cmd="${line#\$ }"
-                   last_out="$(eval "$cmd" 2>&1)"; last_exit=$? ;;
-            '? '*) flush
+            '$ '*) run_pending; flush
+                   pending="${line#\$ }"
+                   have_pending=1 ;;
+            '> '*) if [ "$have_pending" = 1 ]; then
+                       pending="$pending
+${line#> }"
+                   else
+                       expected="${expected:+$expected
+}$line"
+                   fi ;;
+            '? '*) run_pending; flush
                    want="${line#? }"
                    [ "$last_exit" = "$want" ] || { echo "EXIT $(basename "$f"): want $want got $last_exit"; fails=1; }
                    last_exit=0 ;;
-            *)     expected="${expected:+$expected
+            *)     run_pending
+                   expected="${expected:+$expected
 }$line" ;;
         esac
     done < "$f"
+    run_pending
     flush
     [ "$last_exit" = 0 ] || { echo "EXIT $(basename "$f"): want 0 got $last_exit"; fails=1; }
     return $fails
