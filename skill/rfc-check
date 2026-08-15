@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# rfc-check — the whole conformance gate, one command.
+# Usage: rfc-check <rfc-dir>
+# Runs, in order, exactly what CI runs:
+#   1. rfc-lint over every draft and published RFC   (blocking)
+#   2. rfc-run over published RFCs                   (blocking)
+#   3. rfc-run --expect over drafts                  (blocking — red only by declaration)
+#   4. rfc-render-llm --verify over every document   (blocking)
+# then prints a per-document summary table. Exit 0 iff every gate passed.
+# CI workflows and make targets are thin callers of this script — the
+# gate has one body, so local runs and CI cannot drift.
+set -u
+
+DIR="${1:?usage: rfc-check <rfc-dir>}"
+[ -d "$DIR" ] || { echo "rfc-check: $DIR is not a directory" >&2; exit 2; }
+SKILL_DIR="$(cd "$(dirname "$0")" && pwd)"
+FAIL=0
+
+shopt -s nullglob
+drafts=("$DIR"/draft-*.md)
+published=("$DIR"/[0-9]*.md)
+all=("${drafts[@]}" "${published[@]}")
+[ ${#all[@]} -gt 0 ] || { echo "rfc-check: no RFC documents in $DIR"; exit 2; }
+
+echo "== lint (${#all[@]} document(s))"
+for f in "${all[@]}"; do
+    "$SKILL_DIR/rfc-lint" "$f" > /dev/null 2>&1 || { echo "FAIL lint: $f"; "$SKILL_DIR/rfc-lint" "$f" 2>&1 | grep -E "^(ERROR|WARNING)" | head -5; FAIL=1; }
+done
+
+if [ ${#published[@]} -gt 0 ]; then
+    echo "== published evidence (blocking)"
+    "$SKILL_DIR/rfc-run" "${published[@]}" || FAIL=1
+else
+    echo "== published evidence: none yet (all drafts)"
+fi
+
+if [ ${#drafts[@]} -gt 0 ]; then
+    echo "== draft corpus declarations (red only by declaration)"
+    "$SKILL_DIR/rfc-run" --expect "${drafts[@]}" > /dev/null 2>&1 || { echo "FAIL: a draft's corpus does not match its declaration"; "$SKILL_DIR/rfc-run" --expect "${drafts[@]}" 2>&1 | grep MISMATCH; FAIL=1; }
+fi
+
+echo "== digest invariants"
+for f in "${all[@]}"; do
+    "$SKILL_DIR/rfc-render-llm" --verify "$f" || { echo "FAIL digest: $f"; FAIL=1; }
+done
+
+echo ""
+echo "document | lint | corpus | declared | digest"
+for f in "${all[@]}"; do
+    n=$(basename "$f" .md)
+    "$SKILL_DIR/rfc-lint" "$f" >/dev/null 2>&1 && L="ok" || L="FAIL"
+    if "$SKILL_DIR/rfc-run" "$f" >/dev/null 2>&1; then C="green"; else C="red"; fi
+    d=$(sed -n 's/^\*\*Corpus:\*\* *//p' "$f" | head -1); d="${d%% *}"; d="${d:-green}"
+    [ "$C" = "$d" ] && D="$d" || D="$d (STALE)"
+    "$SKILL_DIR/rfc-render-llm" --verify "$f" >/dev/null 2>&1 && G="ok" || G="FAIL"
+    echo "$n | $L | $C | $D | $G"
+done
+
+echo ""
+if [ "$FAIL" = 0 ]; then
+    echo "rfc-check: PASS ($DIR)"
+else
+    echo "rfc-check: FAIL ($DIR)"
+fi
+exit "$FAIL"

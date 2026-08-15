@@ -5,52 +5,14 @@ on:
   pull_request:
 
 jobs:
-  lint:
-    name: Lint RFC documents
+  conformance:
+    name: RFC conformance (rfc-check)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run rfc-lint on all RFCs and drafts
-        run: |
-          shopt -s nullglob
-          for file in rfc/draft-*.md rfc/[0-9]*.md; do
-            skill/rfc-lint "$file" || exit 1
-          done
-        shell: bash
-
-  evidence:
-    name: Verify published RFC evidence
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Run rfc-run on published RFCs (blocking)
-        run: |
-          if ls rfc/[0-9]*.md >/dev/null 2>&1; then
-            skill/rfc-run rfc/[0-9]*.md
-          else
-            echo "No published RFCs found (all drafts)"
-          fi
-        shell: bash
-
-      - name: Verify LLM digest invariants (every document is a projector test case)
-        run: |
-          shopt -s nullglob
-          for file in rfc/draft-*.md rfc/[0-9]*.md; do
-            skill/rfc-render-llm --verify "$file"
-          done
-        shell: bash
-
-      - name: Verify draft corpus declarations (blocking — red only by declaration)
-        run: |
-          shopt -s nullglob
-          set -- rfc/draft-*.md
-          if [ $# -gt 0 ]; then
-            skill/rfc-run --expect "$@"
-          else
-            echo "No drafts"
-          fi
+      - name: Full gate — lint, published evidence, draft declarations, digest invariants
+        run: skill/rfc-check rfc
         shell: bash
 
       - name: Per-document conformance report

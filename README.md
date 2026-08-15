@@ -132,6 +132,17 @@ printf '# RFC Index\n\n## Published\n\n(none — next: 0001)\n\n## Drafts\n' > d
 
 CI (the anti-backsliding wall — a series MUST run it):
 
+One command runs the whole gate — lint over every document, published
+evidence (blocking), draft corpus declarations (red only by
+declaration), and digest invariants — and prints a per-document summary:
+
+```sh
+skill/rfc-check rfc          # or: make check
+```
+
+CI is a thin caller of the same command, so local runs and CI cannot
+drift:
+
 ```yaml
 rfc-conformance:
   runs-on: ubuntu-latest
@@ -141,18 +152,8 @@ rfc-conformance:
     # tools is no verdict (update the SHA deliberately, as a reviewed change)
     - run: |
         git clone https://github.com/nnunley/llm-rfc-skill /tmp/rfc
-        git -C /tmp/rfc checkout fe51b9c
-    # lint gates every document
-    - run: /tmp/rfc/skill/rfc-lint docs/rfc/draft-*.md docs/rfc/[0-9]*.md
-    # published evidence is blocking
-    - run: |
-        if ls docs/rfc/[0-9]*.md >/dev/null 2>&1; then
-          /tmp/rfc/skill/rfc-run docs/rfc/[0-9]*.md
-        else
-          echo "no published RFCs yet"
-        fi
-    # drafts gate on their DECLARED corpus state (red only by declaration)
-    - run: /tmp/rfc/skill/rfc-run --expect docs/rfc/draft-*.md
+        git -C /tmp/rfc checkout 7f16bb8
+    - run: /tmp/rfc/skill/rfc-check docs/rfc
 ```
 
 ## Tooling
