@@ -240,6 +240,37 @@ state name timeout is reserved
 ? 1
 ```
 
+A derived display is part of the document's verified surface, not
+decoration. A render that a diagram engine rejects publishes a syntax
+error in place of the machine — the reader loses the machine, and a
+corpus that checks only the fsm source reports green while the page is
+broken. Therefore: every display derived from an fsm block MUST parse
+and render under the engine that will display it, and the derivation
+MUST be checked in both a toolchain-free and an authoritative form.
+`rfc-lint` holds each derived mermaid render to the `stateDiagram-v2`
+subset `rfc-fsm-render` is permitted to emit, offline and with no
+dependencies; `rfc-mermaid-check` renders the same displays with real
+mermaid, and CI MUST run it over the whole series. The offline check is
+a model of the engine and MUST NOT be treated as authoritative: notes
+in particular MUST be emitted in the `note`/`end note` block form,
+because mermaid lexes an inline `note <state>: <text>` body as diagram
+source and a body carrying `->` — which every `deadline` note carries —
+is a parse error. A renderer whose output real mermaid rejects is a
+defect in the renderer, never in the fsm source. [R-fsm-render]
+
+```transcript @R-fsm-render
+$ printf 'initial A\nA -> B\nterminal B\ndeadline A -> B\nnote A: waits\n' > d.fsm
+$ rfc-fsm-render d.fsm mermaid | grep -c 'note right of A:'
+0
+$ rfc-fsm-render d.fsm mermaid | grep -c 'end note'
+1
+$ rfc-fsm-render d.fsm mermaid | grep -c 'on timeout -> B'
+1
+$ printf '# draft-a-x-00: X\n**Status:** DRAFT\n\140\140\140fsm\ninitial A\nA -> B\nterminal B\ndeadline A -> B\n\140\140\140\n' > draft-a-x-00.md
+$ rfc-lint draft-a-x-00.md 2>&1 | grep -c 'mermaid-render'
+1
+```
+
 A transition MAY be guarded: `guard <from> -> <to>: <key> ...` declares
 that advancing that edge REQUIRES evidence under the named keys attached
 to the FROM state's run record — the machine withholds the next step
@@ -672,6 +703,18 @@ constrained is excluded from judging its own conformance.
 
 ## Changelog
 
+- 2026-08-15: derived displays became a verified surface [R-fsm-render],
+  prompted by a real defect: the published lifecycle diagram rendered as
+  "Syntax error in text" on the site while the whole corpus reported
+  green. `rfc-fsm-render` folded each deadline into an inline note whose
+  body carried `-> <target>`, and mermaid lexes an inline note body as
+  diagram source. Two of thirteen published diagrams were broken — every
+  one with a `deadline` line. Renderer now emits `note`/`end note` block
+  notes (opaque body, arrow displayed verbatim); rfc-lint gained an
+  offline subset check on derived renders, and CI gained
+  `rfc-mermaid-check`, which renders every diagram with real mermaid.
+  The gap this closes: the corpus verified the fsm SOURCE and never the
+  artifact readers actually see.
 - 2026-08-13/14: process designed and iterated in working session —
   dual verifiability, literate evidence, Gherkin rejection, fast/full
   tracks, draft naming, fidelity reservation — each decision exercised

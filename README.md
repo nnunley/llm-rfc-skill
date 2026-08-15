@@ -165,6 +165,7 @@ rfc-conformance:
 | `rfc-tangle` | Extract evidence blocks verbatim for any runner |
 | `rfc-search` | Prior-art search over the internet RFC index — cite standards, don't re-derive them |
 | `rfc-fsm-render` | Derive mermaid/D2 diagrams from verified fsm blocks |
+| `rfc-mermaid-check` | Render every derived diagram with real mermaid (CI; needs mermaid-cli) — rfc-lint's offline subset check is only a model of the engine |
 
 ## Status
 
@@ -201,7 +202,8 @@ Three grants, by function:
   creates **no derivative-work obligation, no attribution requirement, and
   no license carried into your RFC**.
 - **Tooling** — `skill/rfc-lint`, `skill/rfc-tangle`, `skill/rfc-run`,
-  `skill/rfc-search`, `skill/rfc-fsm-render`: [MIT](LICENSE-MIT).
+  `skill/rfc-search`, `skill/rfc-fsm-render`, `skill/rfc-mermaid-check`:
+[MIT](LICENSE-MIT).
 
 **No claim on outputs.** Documents produced using this process — including
 those instantiated from the template and validated by the tooling — belong

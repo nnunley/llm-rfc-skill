@@ -122,7 +122,11 @@ tangled file and exits 0/1. Choose types by least indirection:
   for single initial, reachability, terminal closure, and dead ends;
   allowed/forbidden transition witness tables are cross-checked against the
   machine; mermaid/D2 displays are derived via `rfc-fsm-render`, never
-  authored. Per-state `note <STATE>: <guidance>` lines carry stage
+  authored — and the derived display is itself verified, since a render
+  the engine rejects publishes a syntax error where the machine should be
+  while the corpus still reports green: `rfc-lint` holds each render to
+  the legal stateDiagram-v2 subset offline, and `rfc-mermaid-check` (CI)
+  renders them with real mermaid. Per-state `note <STATE>: <guidance>` lines carry stage
   permissions; `rfc-fsm-exec <file.fsm> <state> [target]` executes the
   machine as a process governor — query mode prints the stage guidance and
   permitted transitions, guard mode exits nonzero on an illegal move —

@@ -15,6 +15,33 @@ jobs:
         run: skill/rfc-check rfc
         shell: bash
 
+  mermaid:
+    name: Derived diagrams render (real mermaid)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # rfc-lint's offline subset check is a model of mermaid; this step is
+      # mermaid itself. A diagram that only passes the model still ships a
+      # "Syntax error in text" bomb to readers, so the published gate has to
+      # include the real renderer.
+      - name: Install mermaid-cli
+        run: npm install --no-save @mermaid-js/mermaid-cli@11
+
+      - name: Render every derived diagram
+        run: MMDC="$PWD/node_modules/.bin/mmdc" skill/rfc-mermaid-check rfc
+        shell: bash
+
+  report:
+    name: Per-document conformance report
+    runs-on: ubuntu-latest
+    needs: [conformance]
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
       - name: Per-document conformance report
         if: always()
         run: |

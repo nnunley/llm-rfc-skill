@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# rfc-mermaid-check — render every derived diagram with REAL mermaid.
+# Usage: rfc-mermaid-check <rfc-dir> | rfc-mermaid-check <rfc.md>...
+#
+# rfc-lint holds derived displays to a legal stateDiagram-v2 subset offline,
+# with no toolchain. That check is a model of mermaid, and a model can be
+# wrong: the failure that motivated this tool (an inline note body carrying
+# "->") parsed clean under every hand-written approximation and still put a
+# "Syntax error in text" bomb on the published page. This tool removes the
+# model from the loop — it runs the same mermaid the browser runs, via
+# mermaid-cli, and a diagram counts as verified only when mermaid renders it.
+#
+# Deliberately NOT part of rfc-check: the local gate stays dependency-free
+# and offline. This runs in CI, where a Chromium download is acceptable.
+# A missing renderer is a hard error, never a silent pass — an unverifiable
+# diagram must not report the same result as a verified one.
+set -u
+
+[ $# -ge 1 ] || { echo "usage: rfc-mermaid-check <rfc-dir> | rfc-mermaid-check <rfc.md>..." >&2; exit 2; }
+SKILL_DIR="$(cd "$(dirname "$0")" && pwd)"
+FSM_RENDER="$SKILL_DIR/rfc-fsm-render"
+[ -x "$FSM_RENDER" ] || { echo "rfc-mermaid-check: rfc-fsm-render not found beside this script" >&2; exit 2; }
+
+# Renderer resolution: MMDC > mmdc on PATH > npx (pinned major).
+if [ -n "${MMDC:-}" ]; then
+    MMDC_CMD=("$MMDC")
+elif command -v mmdc > /dev/null 2>&1; then
+    MMDC_CMD=(mmdc)
+elif command -v npx > /dev/null 2>&1; then
+    MMDC_CMD=(npx --yes @mermaid-js/mermaid-cli@11)
+else
+    echo "rfc-mermaid-check: no mermaid renderer — install @mermaid-js/mermaid-cli or set MMDC" >&2
+    exit 2
+fi
+
+# Chromium in CI containers runs unsandboxed; without this mmdc dies on launch.
+PCFG="$(mktemp -d)/puppeteer.json"
+printf '{"args":["--no-sandbox","--disable-setuid-sandbox"]}\n' > "$PCFG"
+
+shopt -s nullglob
+files=()
+if [ $# -eq 1 ] && [ -d "$1" ]; then
+    files=("$1"/draft-*.md "$1"/[0-9]*.md)
+else
+    for f in "$@"; do
+        [ -f "$f" ] || { echo "rfc-mermaid-check: $f not found" >&2; exit 2; }
+        files+=("$f")
+    done
+fi
+[ ${#files[@]} -gt 0 ] || { echo "rfc-mermaid-check: no RFC documents given" >&2; exit 2; }
+
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK" "$(dirname "$PCFG")"' EXIT
+
+FAIL=0
+TOTAL=0
+for f in "${files[@]}"; do
+    base="$(basename "$f" .md)"
+    d="$WORK/$base"; mkdir -p "$d"
+    awk -v dir="$d" '
+        /^```fsm( @R-[a-z0-9-]+)?$/ { n++; tag = ($2 != "") ? $2 : ("block-" n); infsm = 1; next }
+        infsm && /^```$/ { infsm = 0; next }
+        infsm { print > (dir "/" n ".fsm") }
+    ' "$f"
+    for mf in "$d"/*.fsm; do
+        [ -e "$mf" ] || continue
+        TOTAL=$((TOTAL + 1))
+        n="$(basename "$mf" .fsm)"
+        if ! "$FSM_RENDER" "$mf" mermaid > "$d/$n.mmd" 2>"$d/$n.render-err"; then
+            echo "FAIL $base block $n — rfc-fsm-render errored:"
+            sed 's/^/    /' "$d/$n.render-err"
+            FAIL=1; continue
+        fi
+        if "${MMDC_CMD[@]}" -p "$PCFG" -i "$d/$n.mmd" -o "$d/$n.svg" > "$d/$n.log" 2>&1 \
+           && [ -s "$d/$n.svg" ] && ! grep -q 'Syntax error in text' "$d/$n.svg"; then
+            echo "PASS $base block $n"
+        else
+            echo "FAIL $base block $n — mermaid rejected the derived diagram:"
+            grep -iE 'error|expecting' "$d/$n.log" | head -4 | sed 's/^/    /'
+            echo "    --- derived source ---"
+            sed 's/^/    /' "$d/$n.mmd"
+            FAIL=1
+        fi
+    done
+done
+
+if [ "$TOTAL" -eq 0 ]; then
+    echo "rfc-mermaid-check: no fsm blocks in ${#files[@]} document(s) — nothing to render"
+    exit 0
+fi
+echo "rfc-mermaid-check: $TOTAL diagram(s) rendered with real mermaid"
+exit "$FAIL"

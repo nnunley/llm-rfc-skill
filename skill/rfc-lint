@@ -19,6 +19,10 @@ NA=""
 ck() { CK="${CK:+$CK }$1"; }
 na() { NA="${NA:+$NA }$1"; }
 
+# Sibling tools live beside this one; rfc-lint derives displays to check
+# them, so it must locate rfc-fsm-render the same way rfc-check does.
+LINT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 REQUIRED_SECTIONS="Abstract Motivation Terminology Specification Alternatives_Considered Security_Considerations References Changelog"
 VALID_STATUS="DRAFT|LAST-CALL|PUBLISHED|SUPERSEDED|WITHDRAWN|HISTORIC|POSTPONED"
 VALID_CATEGORY="Standards-Track|Informational|Experimental|BCP"
@@ -442,6 +446,67 @@ lint_file() {
     ' "$f")
     if [[ -n "$fsm_problems" ]]; then
         while IFS= read -r p; do err "$f" "FSM: $p"; done <<< "$fsm_problems"
+    fi
+
+    # 4d2. Mermaid render check (offline). A verified fsm block is worthless
+    # if its derived display does not parse: the reader sees a "Syntax error
+    # in text" bomb where the machine should be, and nothing in the corpus
+    # notices. rfc-lint derives each block through rfc-fsm-render and holds
+    # the output to the stateDiagram-v2 subset the renderer is allowed to
+    # emit. This runs offline with no toolchain; the authoritative check is
+    # real mermaid in CI (rfc-mermaid-check), which this must never contradict.
+    local mermaid_problems=""
+    if [[ "$nfsm" -gt 0 && -x "$LINT_DIR/rfc-fsm-render" ]]; then
+        local mtmp midx=0
+        mtmp=$(mktemp -d)
+        awk -v dir="$mtmp" '
+            /^```fsm( @R-[a-z0-9-]+)?$/ { n++; infsm = 1; next }
+            infsm && /^```$/ { infsm = 0; next }
+            infsm { print > (dir "/" n ".fsm") }
+        ' "$f"
+        for mf in "$mtmp"/*.fsm; do
+            [[ -e "$mf" ]] || continue
+            midx=$((midx + 1))
+            local derived
+            if ! derived=$("$LINT_DIR/rfc-fsm-render" "$mf" mermaid 2>&1); then
+                mermaid_problems+="block $midx: rfc-fsm-render failed: $derived"$'\n'
+                continue
+            fi
+            mermaid_problems+=$(printf '%s\n' "$derived" | awk -v blk="$midx" '
+                NR == 1 {
+                    if ($0 != "stateDiagram-v2")
+                        print "block " blk ": first line must be stateDiagram-v2, got: " $0
+                    next
+                }
+                # Inside a block note the body is opaque text — anything goes.
+                innote && /^[[:space:]]*end note[[:space:]]*$/ { innote = 0; next }
+                innote { next }
+                /^[[:space:]]*$/ { next }
+                # note right of ID   (block form opens; body follows)
+                /^[[:space:]]*note (right of|left of) [A-Za-z0-9_]+[[:space:]]*$/ { innote = 1; next }
+                # The inline form "note X: text" lexes its body as diagram
+                # source: a body carrying -> or -- is a parse error. The
+                # renderer must emit block notes, so reject the form outright.
+                /^[[:space:]]*note (right of|left of) [A-Za-z0-9_]+:/ {
+                    print "block " blk ": inline note form is forbidden (body is lexed as diagram source; use note/end note): " $0
+                    next
+                }
+                # state "Display" as ID
+                /^[[:space:]]*state "[^"]*" as [A-Za-z0-9_]+[[:space:]]*$/ { next }
+                # A --> B, with [*] permitted on either end
+                /^[[:space:]]*(\[\*\]|[A-Za-z0-9_]+) --> (\[\*\]|[A-Za-z0-9_]+)[[:space:]]*$/ { next }
+                { print "block " blk ": not a legal stateDiagram-v2 statement: " $0 }
+                END { if (innote) print "block " blk ": unterminated note (missing \"end note\")" }
+            ')
+        done
+        rm -rf "$mtmp"
+        ck "mermaid-render($nfsm block(s))"
+    else
+        na "mermaid-render"
+    fi
+    mermaid_problems=$(printf '%s' "$mermaid_problems" | grep -v '^$' || true)
+    if [[ -n "$mermaid_problems" ]]; then
+        while IFS= read -r p; do err "$f" "MERMAID: $p"; done <<< "$mermaid_problems"
     fi
 
     # 4e. FSM witness cross-check: when a tag has BOTH an fsm block and a
