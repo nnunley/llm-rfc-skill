@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# rfc-hollow — mutation-audit the conformance corpus. A test that asserts
+# nothing is hollow; so is an evidence block. The corpus proves its checks
+# PASS, not that they MEAN anything, and the difference is invisible until
+# something is deliberately broken.
+#
+# For every evidence block: identify its assertion lines by type, corrupt
+# each one in turn, and re-run. A corrupted assertion MUST kill the block.
+# An assertion that survives corruption is inert — it constrains nothing,
+# and the requirement it claims to prove is unproven.
+#
+# Usage: rfc-hollow <rfc.md>...        exit 0 iff every assertion is load-bearing
+set -u
+SELF="$(cd "$(dirname "$0")" && pwd)"
+[ $# -ge 1 ] || { echo "usage: rfc-hollow <rfc.md>..." >&2; exit 2; }
+tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+SURV=0; HOLLOW=0; CHECKED=0; BLOCKS=0
+
+# which leading keywords are ASSERTIONS for each evidence type; "!" means
+# "every line that is not a command or continuation" (transcript's expected
+# output IS its assertion)
+assertion_lines() {
+    case "$1" in
+        transcript) awk '!/^\$ / && !/^> / && NF { print NR }' "$2" ;;
+        xp-run|plan-run) awk '$1=="refuse"||$1=="at"||$1=="audit" { print NR }' "$2" ;;
+        order)      awk '$1=="expect"||$1=="blocked"||$1=="forced"||$1=="chosen"||$1=="unscoped" { print NR }' "$2" ;;
+        groom)      awk '$1=="drifted"||$1=="unserved"||$1=="aged"||$1=="contradiction"||$1=="groomed" { print NR }' "$2" ;;
+        sweep)      awk '$1=="orphan"||$1=="uncarded"||$1=="unrealized"||$1=="untested"||$1=="hollow"||$1=="expired"||$1=="swept"||$1=="blocked" { print NR }' "$2" ;;
+        crc-check)  awk '$1=="reject"||$1=="accept" { print NR }' "$2" ;;
+        slop-check) awk '$1=="expect" { print NR }' "$2" ;;
+        crc)        awk '$1=="card"||$1=="uses"||$1=="root"||$1=="term"||$1=="external" { print NR }' "$2" ;;
+        fsm)        awk 'NF && $1!="note" { print NR }' "$2" ;;
+        *) : ;;
+    esac
+}
+
+for doc; do
+    [ -f "$doc" ] || { echo "rfc-hollow: $doc not found" >&2; exit 2; }
+    d="$tmp/$(basename "$doc" .md)"; mkdir -p "$d"
+    "$SELF/rfc-tangle" "$doc" "$d" >/dev/null 2>&1 || continue
+    for blk in "$d"/*; do
+        [ -f "$blk" ] || continue
+        type="${blk##*.}"
+        BLOCKS=$((BLOCKS+1))
+        if ! "$SELF/rfc-run" --type "$type" "$blk" >/dev/null 2>&1 </dev/null; then
+            echo "SKIP  $(basename "$blk") — does not pass at baseline"; continue
+        fi
+        case "$type" in transcript) literal=1 ;; *) literal=0 ;; esac
+        mapfile -t lines < <(assertion_lines "$type" "$blk")
+        if [ "${#lines[@]}" -eq 0 ]; then
+            echo "HOLLOW $(basename "$blk") — no assertions of type $type"
+            HOLLOW=$((HOLLOW+1)); continue
+        fi
+        for ln in "${lines[@]}"; do
+            # the sentinel must land where the adapter will SEE it: appended
+            # after a trailing comment it is stripped before parsing, and the
+            # mutant survives for a reason that says nothing about the
+            # assertion. transcript output is literal, so append there.
+            awk -v n="$ln" -v lit="$literal" '
+                NR != n { print; next }
+                lit == "1" { print $0 " ZZQ"; next }
+                {
+                    i = index($0, ";"); h = index($0, "#")
+                    if (h && (!i || h < i)) i = h
+                    if (i) printf "%s ZZQ %s\n", substr($0, 1, i-1), substr($0, i)
+                    else print $0 " ZZQ"
+                }' "$blk" > "$blk.mutant"
+            CHECKED=$((CHECKED+1))
+            if "$SELF/rfc-run" --type "$type" "$blk.mutant" >/dev/null 2>&1 </dev/null; then
+                echo "SURVIVOR $(basename "$blk"):$ln — $(sed -n "${ln}p" "$blk")"
+                SURV=$((SURV+1))
+            fi
+            rm -f "$blk.mutant"
+        done
+    done
+done
+echo "-- $BLOCKS blocks, $CHECKED assertions mutated, $SURV survivors, $HOLLOW assertionless"
+[ "$SURV" -eq 0 ] && [ "$HOLLOW" -eq 0 ]
