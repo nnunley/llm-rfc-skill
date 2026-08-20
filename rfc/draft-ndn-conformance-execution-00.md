@@ -100,7 +100,7 @@ One machine, one stage: `rfc-fsm-exec`. And the gate itself takes file
 arguments for one-off runs: `rfc-check <rfc.md>...` runs the same four
 stages scoped to the named documents, labels its output as a spot run
 with no merge standing, and a make target passes files through
-(`make check FILES="rfc/x.md"`). Spot invocations MUST behave
+(`make test FILES="rfc/x.md"`). Spot invocations MUST behave
 identically to the same checks inside the full gate — the gate composes
 the tools, it does not reinterpret them. [R-spot-block]
 
@@ -141,7 +141,7 @@ command as the gate of record.
 
 ### Logic in the make target
 
-`make check` as the implementation rather than an alias. Rejected: make
+`make test` as the implementation rather than an alias. Rejected: make
 is a per-repository convention, and logic living there would fork the
 gate between repositories and CI. The Makefile stays one line deep;
 the command is the contract.
@@ -178,6 +178,11 @@ merge gated on the author's optimism.
 
 ## Changelog
 
+- 2026-08-20: the make target is `test`, not `check`. Naming only — the
+  gate's one body is still `rfc-check`, and make remains a thin caller.
+  `check` is the GNU Coding Standards name and `test` the prevailing one;
+  the tie went to the linter, since `checkmake` treats `test` as the
+  expected target and a convention a tool can check beats one it cannot.
 - 2026-08-14: draft-00 created from external-reader feedback ("how do I
   test conformance — would a make target exist?"): the gate gets one
   body (rfc-check), make/CI/docs become thin callers, spot tests are

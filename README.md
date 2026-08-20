@@ -143,7 +143,7 @@ evidence (blocking), draft corpus declarations (red only by
 declaration), and digest invariants — and prints a per-document summary:
 
 ```sh
-skill/rfc-check rfc          # or: make check
+skill/rfc-check rfc          # or: make test
 ```
 
 CI is a thin caller of the same command, so local runs and CI cannot
