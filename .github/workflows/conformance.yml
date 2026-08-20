@@ -6,13 +6,44 @@ on:
 
 jobs:
   conformance:
-    name: RFC conformance (rfc-check)
-    runs-on: ubuntu-latest
+    name: gate (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # The tooling claims portable bash + awk on BSD and GNU. macOS
+        # supplies BSD awk/sed and bash 3.2; Linux supplies GNU and bash 5.
+        # Both architectures run because the runner images differ by more
+        # than instruction set.
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, macos-13]
     steps:
       - uses: actions/checkout@v4
 
+      - name: Toolchain in use
+        run: |
+          echo "uname:  $(uname -srm)"
+          echo "bash:   $BASH_VERSION"
+          awk --version 2>/dev/null | head -1 || echo "awk:    BSD (no --version)"
+        shell: bash
+
       - name: Full gate — lint, published evidence, draft declarations, digest invariants
         run: skill/rfc-check rfc
+        shell: bash
+
+      # macOS is the only platform with a containment provider today, so it
+      # is the only one that can demonstrate the boundary holding. Linux
+      # falls back to the hygiene floor until a bwrap provider exists.
+      - name: Containment refuses an escape
+        if: runner.os == 'macOS'
+        run: |
+          probe=$(mktemp -d)/escape.transcript
+          target="$(mktemp -d)/OUTSIDE"
+          printf '$ echo pwned > %s\n$ echo ok\nok\n' "$target" > "$probe"
+          skill/rfc-run --type transcript "$probe" || true
+          if [ -e "$target" ]; then
+            echo "FAIL: a transcript wrote outside its sandbox"; exit 1
+          fi
+          echo "escape refused: $target was not created"
         shell: bash
 
   mermaid:

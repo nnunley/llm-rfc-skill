@@ -37,7 +37,7 @@ else
     done
     echo "== SPOT RUN — advisory, no merge standing (the gate of record is rfc-check <rfc-dir>)"
 fi
-all=("${drafts[@]}" "${published[@]}")
+all=(${drafts[@]+"${drafts[@]}"} ${published[@]+"${published[@]}"})
 [ ${#all[@]} -gt 0 ] || { echo "rfc-check: no RFC documents in $DIR"; exit 2; }
 
 echo "== lint (${#all[@]} document(s))"
