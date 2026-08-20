@@ -20,7 +20,8 @@ f="${1:?usage: transcript <file>}"
 # serialised; a baton belongs where a resource genuinely cannot be
 # duplicated, and a temporary directory can.
 LOGICAL=/tmp/gi-rfc
-SANDBOX=$(mktemp -d "${TMPDIR:-/tmp%/}/gi-rfc.XXXXXX") || { echo "transcript: cannot create sandbox" >&2; exit 2; }
+TMPBASE="${TMPDIR:-/tmp}"; TMPBASE="${TMPBASE%/}"
+SANDBOX=$(mktemp -d "$TMPBASE/gi-rfc.XXXXXX") || { echo "transcript: cannot create sandbox" >&2; exit 2; }
 # canonical form: substitution is textual, so the stored path must be
 # exactly what the shell will print (no double slash, symlinks resolved)
 SANDBOX=$(cd "$SANDBOX" && pwd -P)
