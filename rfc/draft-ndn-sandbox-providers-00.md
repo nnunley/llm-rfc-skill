@@ -173,6 +173,36 @@ $ rfc-run --adapter-dir adapters --sandbox env-scrub --type probe sample.probe
 ? 0
 ```
 
+### A sandbox is per-invocation
+
+A sandbox instance MUST be private to the invocation that created it. Where
+a document specifies a sandbox path, that path is **logical**: an
+implementation MUST NOT make it the physical directory shared by every run.
+A shared physical sandbox is not an isolation mechanism but a global mutable
+directory, and it forces a cross-run mutex whose holder cannot be
+distinguished from a dead one — a killed run then leaves a lock that fails
+every later run with a false negative, indefinitely, until a human
+intervenes. Contention that can be removed MUST be removed rather than
+serialised; serialisation belongs to resources that genuinely cannot be
+duplicated, and a temporary directory can. [R-sandbox-per-invocation]
+
+An implementation preserving a logical path over a private physical
+directory MUST canonicalise in both directions, so that transcripts remain
+byte-exact: the logical path substituted for the physical one on the way in,
+and the physical path rewritten back to the logical one in captured output.
+It MUST NOT create a lock, and MUST leave nothing behind that a later run
+could mistake for contention.
+
+```transcript @R-sandbox-per-invocation
+$ pwd
+/tmp/gi-rfc
+$ printf hello > /tmp/gi-rfc/x
+$ cat /tmp/gi-rfc/x
+hello
+$ test -e /tmp/gi-rfc.lock; echo $?
+1
+```
+
 ### Division of ownership
 
 Providers own isolation; adapters continue to own their vocabulary's
@@ -244,3 +274,9 @@ choice.
 - 2026-08-14: external-review hardening — `none` is honored only from
   the --sandbox flag; RFC_SANDBOX=none or a profile naming none is a
   loud error rather than a silent defeat of the declared hygiene floor.
+- 2026-08-20: per-invocation sandbox isolation added
+  ([R-sandbox-per-invocation]) after the bootstrap transcript adapter's
+  shared physical sandbox produced exactly the failure the requirement now
+  forbids: a killed corpus run orphaned the cross-run lock, and every
+  subsequent run reported six unrelated drafts red. Found by Claude while
+  running concurrent gates; the remedy is isolation, not a better lock.
