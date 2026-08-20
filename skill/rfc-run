@@ -51,6 +51,61 @@ resolve_sandbox() {
     return 1
 }
 
+# platform_default -> the containment provider this OS can actually run.
+# Isolation is inherently platform-bound: seatbelt is macOS's mechanism,
+# bwrap is Linux's. Naming one in a series profile would make the corpus
+# unrunnable on the other platform, so the LAST resort in the precedence
+# chain is derived from uname rather than declared.
+platform_default() {
+    case "$(uname -s)" in
+        Darwin) printf 'seatbelt' ;;
+        Linux)  printf 'bwrap' ;;
+        *)      return 1 ;;
+    esac
+}
+
+# A platform default is a fallback, NOT a selection, so an unresolvable one
+# is not the hard error that a named provider is — a machine with no
+# containment mechanism must still be able to run its own corpus. It falls
+# back to the env-scrub hygiene floor and says so once: a run with a weaker
+# boundary than the platform intends must never look identical to a
+# contained one.
+# Sets DEFAULT_PROVIDER (and DOWNGRADE_NOTICE when it had to weaken); it
+# must NOT return the path via stdout, because `x=$(f)` would run it in a
+# subshell and the notice would die there — a downgrade nobody is told
+# about is the exact failure this guard exists to prevent.
+DEFAULT_PROVIDER=""
+DOWNGRADE_NOTICE=""
+DOWNGRADE_SHOWN=""
+default_provider() {
+    local series_dir="$1" want p
+    DEFAULT_PROVIDER=""
+    # Already inside a boundary: do not re-wrap. Containment is not
+    # re-entrant (sandbox_apply fails inside a seatbelt), and re-wrapping
+    # would also change what a nested bare run MEANS — the corpus contains
+    # evidence asserting that an unwrapped run really is unwrapped.
+    # An explicit --sandbox still wraps; only the default defers.
+    [ -z "${RFC_SANDBOX_ACTIVE:-}" ] || return 1
+    if want=$(platform_default); then
+        if p=$(resolve_sandbox "$want" "$series_dir"); then
+            DEFAULT_PROVIDER="$p"; return 0
+        fi
+        DOWNGRADE_NOTICE="rfc-run: platform provider '$want' unavailable — falling back to env-scrub (hygiene only, NOT a security boundary)"
+    else
+        DOWNGRADE_NOTICE="rfc-run: no containment provider for $(uname -s) — falling back to env-scrub (hygiene only, NOT a security boundary)"
+    fi
+    if p=$(resolve_sandbox env-scrub "$series_dir"); then
+        DEFAULT_PROVIDER="$p"; return 0
+    fi
+    return 1
+}
+
+announce_downgrade() {
+    [ -n "$DOWNGRADE_NOTICE" ] && [ -z "$DOWNGRADE_SHOWN" ] || return 0
+    echo "$DOWNGRADE_NOTICE" >&2
+    DOWNGRADE_SHOWN=1
+}
+
 # read_profile FILE -> sets PROFILE=(name flags...); false if no effective line
 read_profile() {
     local line
@@ -99,6 +154,10 @@ if [ -n "$TYPE" ]; then
         }
         exec "$provider" -- "$adapter" "$1"
     fi
+    if [ "$sbname" != none ] && default_provider "$SANDBOX_DIR"; then
+        announce_downgrade
+        exec "$DEFAULT_PROVIDER" -- "$adapter" "$1"
+    fi
     exec "$adapter" "$1"
 fi
 
@@ -135,6 +194,12 @@ for rfc in "$@"; do
             echo "rfc-run: no sandbox provider found for $sbname"
             FAILS=$((FAILS + 1))
             continue
+        fi
+    elif [ "$sbname" != none ]; then
+        # nothing named anywhere in the chain: fall to the platform default
+        if default_provider "$series_sandboxes"; then
+            provider="$DEFAULT_PROVIDER"
+            announce_downgrade
         fi
     fi
 

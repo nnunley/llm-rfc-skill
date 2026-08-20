@@ -79,4 +79,7 @@ profile="$scratch/.seatbelt.sb"
     done
 } > "$profile"
 
-TMPDIR="$scratch" exec sandbox-exec -f "$profile" "$@"
+# Announce the boundary to anything nested inside it: containment is
+# not re-entrant (a seatbelt cannot apply inside a seatbelt), and the
+# outermost boundary is the one that governs.
+RFC_SANDBOX_ACTIVE=seatbelt TMPDIR="$scratch" exec sandbox-exec -f "$profile" "$@"

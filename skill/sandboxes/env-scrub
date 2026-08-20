@@ -12,7 +12,8 @@ shift
 [ $# -ge 1 ] || { echo "usage: env-scrub -- command args..." >&2; exit 2; }
 
 scratch=$(mktemp -d)
-HOME="$scratch" XDG_CONFIG_HOME="$scratch/.config" GIT_CONFIG_NOSYSTEM=1 "$@"
+RFC_SANDBOX_ACTIVE=env-scrub \
+  HOME="$scratch" XDG_CONFIG_HOME="$scratch/.config" GIT_CONFIG_NOSYSTEM=1 "$@"
 rc=$?
 rm -rf "$scratch"
 exit $rc
