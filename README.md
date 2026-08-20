@@ -116,8 +116,14 @@ layer under the process you already have.
 
 ```
 git clone https://github.com/nnunley/llm-rfc-skill
-cp -r llm-rfc-skill/skill ~/.claude/skills/authoring-rfcs
+cd llm-rfc-skill && make install     # installs HEAD, not the working tree
 ```
+
+`make install` reads the committed tree (`git archive HEAD`), so the
+installed skill always names a commit you can point at. Copying `skill/`
+by hand installs whatever half-finished edit is sitting in the working
+tree — which is a real hazard once more than one agent works the repo.
+Override the destination with `SKILL_DEST=...`.
 
 Other runtimes: any agent that follows `SKILL.md`-style instructions can
 run the process; the tooling is dependency-free bash + awk (BSD and GNU),
