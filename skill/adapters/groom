@@ -1,0 +1,143 @@
+#!/usr/bin/env bash
+# groom — backlog grooming as a derivation over declared facts: drift from
+# current targets, aging, unserved targets, and the aged-top-priority
+# contradiction. No estimates, no meeting, no judgement — every finding is
+# computed from dates and declarations the pair wrote down.
+#
+# Usage: groom <file>           verify the file's assertions
+#        groom --print <file>   print the grooming report
+#
+# Shares the order-problem file (adapters/order); statements it does not
+# recognise here are ignored there and vice versa.
+#   target <ID> <text>          something you currently want
+#   retired <ID>                a target you have moved on from
+#   serves <StoryID> <TargetID>
+#   since <StoryID> <YYYY-MM-DD>
+#   today <YYYY-MM-DD>          required when any `since` is declared
+#   stale <days>                aging threshold (default 14)
+# Assertions: drifted <StoryID> / unserved <TargetID> / aged <StoryID> <days>
+#             / contradiction <StoryID> / groomed   (nothing to report)
+set -u
+PRINT=0
+if [ "${1:-}" = "--print" ]; then PRINT=1; shift; fi
+f="${1:?usage: groom [--print] <file>}"
+
+result=$(awk '
+    function jdn(s,   y, m, d, a, y2, m2) {
+        y = substr(s, 1, 4) + 0; m = substr(s, 6, 2) + 0; d = substr(s, 9, 2) + 0
+        a = int((14 - m) / 12); y2 = y + 4800 - a; m2 = m + 12 * a - 3
+        return d + int((153 * m2 + 2) / 5) + 365 * y2 + int(y2 / 4) - int(y2 / 100) + int(y2 / 400) - 32045
+    }
+    function isdate(s) { return s ~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]$/ }
+    { sub(/[[:space:]]*;.*$/, "") }
+    /^[[:space:]]*$/ { next }
+    $1 == "target" && NF >= 2 { if ($2 in tgt) print "ERROR duplicate target " $2; tgt[$2] = 1; torder[++nt] = $2; next }
+    $1 == "retired" && NF == 2 { dead[$2] = 1; tgt[$2] = 1; next }   # retiring implies it existed
+    $1 == "serves" && NF == 3 { serves[$2] = $3; next }
+    $1 == "since" && NF == 3 {
+        if (!isdate($3)) { print "ERROR since needs YYYY-MM-DD: " $0; bad = 1; next }
+        since[$2] = $3; next
+    }
+    $1 == "today" && NF == 2 {
+        if (!isdate($2)) { print "ERROR today needs YYYY-MM-DD: " $0; bad = 1; next }
+        today = $2; next
+    }
+    $1 == "stale" && NF == 2 { stale = $2 + 0; next }
+    $1 == "story" && $3 == "priority" && NF >= 4 { id = $2; prio[id] = $4 + 0; sorder[++ns] = id; next }
+    $1 == "drifted" && NF == 2 { adrift[++nad] = $2; next }
+    $1 == "unserved" && NF == 2 { aun[++naun] = $2; next }
+    $1 == "aged" && NF == 3 { aag[++naag] = $2; aagd[naag] = $3 + 0; next }
+    $1 == "contradiction" && NF == 2 { acon[++nacon] = $2; next }
+    $1 == "groomed" && NF == 1 { clean = 1; next }
+    # a malformed statement of OUR OWN vocabulary is an error, never a
+    # silent no-op: an assertion that parses as nothing asserts nothing,
+    # and the block passes while proving less than it claims.
+    $1=="target"||$1=="retired"||$1=="serves"||$1=="since"||$1=="today"||$1=="stale"||\
+    $1=="drifted"||$1=="unserved"||$1=="aged"||$1=="contradiction"||$1=="groomed" {
+        print "ERROR malformed " $1 " statement: " $0; bad = 1; next
+    }
+    { next }   # deck/built/expect/... belong to the order lens
+    END {
+        if (bad) exit
+        if (stale == 0) stale = 14
+        if (ns == 0) { print "ERROR problem declares no stories"; exit }
+        for (i = 1; i <= nad; i++) print "ASSERTDRIFT " adrift[i]
+        for (i = 1; i <= naun; i++) print "ASSERTUNSERVED " aun[i]
+        for (i = 1; i <= naag; i++) print "ASSERTAGED " aag[i] " " aagd[i]
+        for (i = 1; i <= nacon; i++) print "ASSERTCONTRA " acon[i]
+        if (clean) print "ASSERTCLEAN"
+
+        # drift: a story serving nothing live, once any target is declared
+        for (i = 1; i <= ns; i++) {
+            id = sorder[i]
+            if (nt == 0) continue
+            t = serves[id]
+            if (t == "") { print "DRIFT " id " serves no target" ; drifted[id] = 1; continue }
+            if (!(t in tgt)) { print "DRIFT " id " serves undeclared target " t; drifted[id] = 1; continue }
+            if (t in dead)  { print "DRIFT " id " serves retired target " t; drifted[id] = 1 }
+        }
+        # the other direction: a target nothing is working toward
+        for (i = 1; i <= nt; i++) {
+            t = torder[i]
+            if (t in dead) continue
+            n = 0
+            for (j = 1; j <= ns; j++) if (serves[sorder[j]] == t && !(sorder[j] in drifted)) n++
+            if (n == 0) print "UNSERVED " t
+        }
+        # aging, and the best-priority-but-stale contradiction
+        minp = -1
+        for (i = 1; i <= ns; i++) {
+            id = sorder[i]
+            if (id in drifted) continue
+            if (minp < 0 || prio[id] < minp) minp = prio[id]
+        }
+        for (i = 1; i <= ns; i++) {
+            id = sorder[i]
+            if (!(id in since)) continue
+            if (today == "") { print "ERROR since declared without today"; exit }
+            age = jdn(today) - jdn(since[id])
+            print "AGE " id " " age
+            if (age >= stale && !(id in drifted)) {
+                print "STALE " id " " age
+                if (prio[id] == minp)
+                    print "CONTRA " id " is your best-priority story and has waited " age " days — either the priority is wrong or something is blocking it"
+            }
+        }
+    }
+' "$f") || { echo "groom: derivation failed"; exit 1; }
+
+drift=$(printf '%s\n' "$result" | sed -n 's/^DRIFT //p')
+unserved=$(printf '%s\n' "$result" | sed -n 's/^UNSERVED //p')
+stale=$(printf '%s\n' "$result" | sed -n 's/^STALE //p')
+contra=$(printf '%s\n' "$result" | sed -n 's/^CONTRA //p')
+errors=$(printf '%s\n' "$result" | sed -n 's/^ERROR //p')
+
+if [ "$PRINT" -eq 1 ]; then
+    [ -n "$errors" ] && { printf '%s\n' "$errors"; exit 1; }
+    [ -n "$drift" ]    && printf 'drifted from current targets (held, not dropped):\n%s\n' "$drift"
+    [ -n "$unserved" ] && printf 'targets nothing is serving:\n%s\n' "$unserved"
+    [ -n "$stale" ]    && printf 'aged past the threshold (days):\n%s\n' "$stale"
+    [ -n "$contra" ]   && printf 'contradiction:\n%s\n' "$contra"
+    [ -z "$drift$unserved$stale$contra" ] && echo "groomed: nothing to report"
+    exit 0
+fi
+
+[ -n "$errors" ] && { printf '%s\n' "$errors"; exit 1; }
+fail() { printf '%s\n' "$1"; exit 1; }
+for id in $(printf '%s\n' "$result" | awk '$1 == "ASSERTDRIFT" { print $2 }'); do
+    printf '%s\n' "$result" | grep -q "^DRIFT $id " || fail "expected $id to have drifted, it did not"
+done
+for t in $(printf '%s\n' "$result" | awk '$1 == "ASSERTUNSERVED" { print $2 }'); do
+    printf '%s\n' "$result" | grep -q "^UNSERVED $t$" || fail "expected target $t to be unserved, it was not"
+done
+printf '%s\n' "$result" | awk '$1 == "ASSERTAGED" { print $2, $3 }' | while read -r id d; do
+    printf '%s\n' "$result" | grep -q "^AGE $id $d$" || { echo "expected $id to be $d days old, it was not"; exit 3; }
+done || exit 1
+for id in $(printf '%s\n' "$result" | awk '$1 == "ASSERTCONTRA" { print $2 }'); do
+    printf '%s\n' "$result" | grep -q "^CONTRA $id " || fail "expected a contradiction finding for $id, there was none"
+done
+if printf '%s\n' "$result" | grep -q '^ASSERTCLEAN'; then
+    [ -z "$drift$unserved$stale$contra" ] || fail "expected nothing to report, got findings"
+fi
+printf '%s\n' "$result" | grep -q '^ASSERT' || fail "problem states no grooming assertion"
+exit 0

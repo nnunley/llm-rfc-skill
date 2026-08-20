@@ -47,6 +47,17 @@ result=$(awk '
         next
     }
     $1 == "built" && NF == 2 { built[$2] = 1; next }
+    $1 == "target" && NF >= 2 { tgt[$2] = 1; nt++; next }
+    $1 == "retired" && NF == 2 { dead[$2] = 1; tgt[$2] = 1; next }
+    $1 == "serves" && NF == 3 { serves[$2] = $3; next }
+    $1 == "since" && NF == 3 { next }
+    $1 == "today" && NF == 2 { next }
+    $1 == "stale" && NF == 2 { next }
+    $1 == "drifted" && NF == 2 { next }
+    $1 == "unserved" && NF == 2 { next }
+    $1 == "aged" && NF == 3 { next }
+    $1 == "contradiction" && NF == 2 { next }
+    $1 == "groomed" { next }
     $1 == "expect" { for (i = 2; i <= NF; i++) want[++nexp] = $i; hasexp = 1; next }
     $1 == "forced" && NF == 2 { af[++naf] = $2; next }
     $1 == "chosen" && NF == 2 { ac[++nac] = $2; next }
@@ -64,6 +75,19 @@ result=$(awk '
         for (i = 1; i <= nac; i++) print "ASSERTCHOSEN " ac[i]
         for (i = 1; i <= nau; i++) print "ASSERTUNSCOPED " au[i]
         if (nst == 0) { print "ERROR problem declares no stories"; exit }
+        # a story serving no current target is HELD: never silently ordered,
+        # never silently dropped. Only applies once targets are declared.
+        if (nt > 0) {
+            live = 0
+            for (i = 1; i <= nst; i++) {
+                id = sorder[i]; t = serves[id]
+                if (t == "" || !(t in tgt) || (t in dead)) { drift[id] = 1; print "HELD " id }
+                else { live++; lorder[++nlive] = id }
+            }
+            if (live == 0) { print "BLOCK every story has drifted from your current targets"; exit }
+            nst = nlive
+            for (i = 1; i <= nlive; i++) sorder[i] = lorder[i]
+        }
 
         # scope: only cards some current story needs, transitively
         qn = 0
@@ -79,8 +103,10 @@ result=$(awk '
 
         # a dependency nothing will ever build is a hard block
         for (c in scope)
-            if (!satisfied(c) && !(c in owner))
-                print "BLOCK no story realizes card " c
+            if (!satisfied(c)) {
+                if (!(c in owner)) print "BLOCK no story realizes card " c
+                else if (owner[c] in drift) print "BLOCK card " c " is realized only by " owner[c] ", which has drifted from your current targets"
+            }
 
         # dependencies of a story: what its cards use, minus what it builds itself
         for (i = 1; i <= nst; i++) {

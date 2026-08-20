@@ -1,0 +1,143 @@
+#!/usr/bin/env bash
+# sweep — the entropy sweep: code-layer reachability and provenance.
+# Finds what nothing wants any more: units unreachable from an entry point,
+# units the design has no card for, cards no unit implements, units no test
+# covers, tests that assert nothing, and units whose originating story
+# serves only retired targets. Every finding must be dispositioned — deleted,
+# or excepted with a DATED expiry — before it may pass. Exceptions age, so
+# suppression cannot become the new accumulator.
+#
+# Usage: sweep <file> | sweep --print <file>
+#
+# Inventory syntax (the seam: a project produces this however it likes):
+#   entry <Unit>                  a process entry point or public API surface
+#   unit <Unit>                   a code unit, at the project's chosen grain
+#   calls <From> <To>             a reachability edge
+#   implements <Unit> <Card>      the design card this unit realizes
+#   card <Card>                   a card the design declares
+#   covers <Test> <Unit>          test coverage of a unit
+#   asserts <Test> <N>            how many assertions the test makes
+#   origin <Unit> <StoryID>       which story produced this unit
+#   story <ID> ... / serves <ID> <T> / target <T> ... / retired <T> / today <date>
+#   except <kind> <name> until <YYYY-MM-DD> because <text>
+# Assertions: orphan/uncarded/unrealized/untested/hollow/expired <name>,
+#             swept (nothing to report), blocked <text>
+set -u
+PRINT=0
+if [ "${1:-}" = "--print" ]; then PRINT=1; shift; fi
+f="${1:?usage: sweep [--print] <file>}"
+
+result=$(awk '
+    function isdate(s) { return s ~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]$/ }
+    { sub(/[[:space:]]*;.*$/, "") }
+    /^[[:space:]]*$/ { next }
+    $1 == "entry" && NF == 2 { entry[$2] = 1; unit[$2] = 1; uorder[++nu] = $2; next }
+    $1 == "unit" && NF == 2 { if (!($2 in unit)) { unit[$2] = 1; uorder[++nu] = $2 } next }
+    $1 == "calls" && NF == 3 { adj[$2] = adj[$2] " " $3; next }
+    $1 == "implements" && NF == 3 { impl[$2] = $3; carded[$3] = 1; next }
+    $1 == "card" && NF == 2 { if (!($2 in card)) { card[$2] = 1; corder[++nc] = $2 } next }
+    $1 == "covers" && NF == 3 { cov[$3] = cov[$3] " " $2; istest[$2] = 1; if (!($2 in tseen)) { tseen[$2] = 1; torder[++ntst] = $2 } next }
+    $1 == "asserts" && NF == 3 { nass[$2] = $3 + 0; hasass[$2] = 1; if (!($2 in tseen)) { tseen[$2] = 1; torder[++ntst] = $2; istest[$2] = 1 } next }
+    $1 == "origin" && NF == 3 { orig[$2] = $3; next }
+    $1 == "target" && NF >= 2 { tgt[$2] = 1; next }
+    $1 == "retired" && NF == 2 { tgt[$2] = 1; dead[$2] = 1; next }
+    $1 == "serves" && NF == 3 { serves[$2] = $3; next }
+    $1 == "story" && NF >= 2 { story[$2] = 1; next }
+    $1 == "today" && NF == 2 { if (!isdate($2)) { print "ERROR today needs YYYY-MM-DD"; bad = 1 } today = $2; next }
+    $1 == "except" && NF >= 6 && $4 == "until" && $6 == "because" {
+        k = $2 SUBSEP $3
+        if (!isdate($5)) { print "ERROR exception expiry needs YYYY-MM-DD: " $0; bad = 1; next }
+        exc[k] = $5; eorder[++ne] = k; ekind[k] = $2; ename[k] = $3; next
+    }
+    $1 == "except" { print "ERROR an exception needs: except <kind> <name> until <date> because <text>"; bad = 1; next }
+    $1 == "orphan"     && NF == 2 { a[++na] = "orphan"     SUBSEP $2; next }
+    $1 == "uncarded"   && NF == 2 { a[++na] = "uncarded"   SUBSEP $2; next }
+    $1 == "unrealized" && NF == 2 { a[++na] = "unrealized" SUBSEP $2; next }
+    $1 == "untested"   && NF == 2 { a[++na] = "untested"   SUBSEP $2; next }
+    $1 == "hollow"     && NF == 2 { a[++na] = "hollow"     SUBSEP $2; next }
+    $1 == "expired"    && NF == 2 { a[++na] = "expired"    SUBSEP $2; next }
+    $1 == "swept" { clean = 1; next }
+    $1 == "blocked" { blk = $0; sub(/^[[:space:]]*blocked[[:space:]]+/, "", blk); hasblk = 1; next }
+    { print "ERROR not a sweep statement: " $0; bad = 1 }
+    END {
+        if (bad) exit
+        for (i = 1; i <= na; i++) { split(a[i], p, SUBSEP); print "ASSERT " p[1] " " p[2] }
+        if (clean) print "ASSERTCLEAN"
+        if (hasblk) print "BLOCKEXPECT " blk
+        if (nu == 0) { print "ERROR inventory declares no units"; exit }
+
+        # exceptions must not have expired, and must still match something
+        for (i = 1; i <= ne; i++) {
+            k = eorder[i]
+            if (today == "") { print "ERROR exceptions declared without today"; exit }
+            if (exc[k] < today) print "BLOCK exception for " ekind[k] " " ename[k] " expired on " exc[k] " — dispose of it, do not extend it by habit"
+        }
+
+        # reachability from entry points, over calls; tests are not units of use
+        qn = 0
+        for (i = 1; i <= nu; i++) if (uorder[i] in entry) { seen[uorder[i]] = 1; q[qn++] = uorder[i] }
+        if (qn == 0) print "BLOCK inventory declares no entry point — reachability cannot be computed"
+        for (qi = 0; qi < qn; qi++) {
+            n = split(adj[q[qi]], b, " ")
+            for (j = 1; j <= n; j++) if (b[j] != "" && !(b[j] in seen)) { seen[b[j]] = 1; q[qn++] = b[j] }
+        }
+        for (i = 1; i <= nu; i++) {
+            u = uorder[i]
+            if (u in istest) continue
+            if (!(u in seen))   print "FIND orphan " u " is not reachable from any entry point"
+            if (!(u in impl))   print "FIND uncarded " u " implements no card — the design has no record of it"
+            if (cov[u] == "")   print "FIND untested " u " is covered by no test"
+            if (u in orig) {
+                s = orig[u]; t = serves[s]
+                if (t != "" && (t in dead)) print "FIND expired " u " traces to story " s ", which serves retired target " t
+            }
+        }
+        for (i = 1; i <= nc; i++) if (!(corder[i] in carded)) print "FIND unrealized " corder[i] " is a card no unit implements"
+        for (i = 1; i <= ntst; i++) {
+            t = torder[i]
+            if (!(t in hasass)) print "FIND hollow " t " declares no assertion count — it cannot be shown to assert anything"
+            else if (nass[t] == 0) print "FIND hollow " t " asserts nothing"
+        }
+        for (i = 1; i <= ne; i++) print "EXC " ekind[eorder[i]] " " ename[eorder[i]]
+    }
+' "$f") || { echo "sweep: derivation failed"; exit 1; }
+
+errors=$(printf '%s\n' "$result" | sed -n 's/^ERROR //p')
+[ -n "$errors" ] && { printf '%s\n' "$errors"; exit 1; }
+blocks=$(printf '%s\n' "$result" | sed -n 's/^BLOCK //p')
+blkexp=$(printf '%s\n' "$result" | sed -n 's/^BLOCKEXPECT //p')
+
+# a finding is dispositioned only if a live exception names it
+live=$(printf '%s\n' "$result" | awk '$1 == "FIND" {
+    k = $2 SUBSEP $3; keep[k] = $0
+} $1 == "EXC" { drop[$2 SUBSEP $3] = 1 } END {
+    for (k in keep) if (!(k in drop)) print keep[k]
+}' | sed 's/^FIND //' | sort)
+# an exception naming nothing is itself accumulation
+stale=$(printf '%s\n' "$result" | awk '$1 == "FIND" { has[$2 SUBSEP $3] = 1 }
+    $1 == "EXC" { if (!($2 SUBSEP $3 in has)) print $2 " " $3 }' | sort)
+
+if [ "$PRINT" -eq 1 ]; then
+    [ -n "$blocks" ] && printf 'blocking:\n%s\n' "$blocks"
+    [ -n "$live" ]   && printf 'undispositioned findings (these block integration):\n%s\n' "$live"
+    [ -n "$stale" ]  && printf 'exceptions that no longer name a finding (delete them):\n%s\n' "$stale"
+    [ -z "$blocks$live$stale" ] && echo "swept: nothing unaccounted for"
+    exit 0
+fi
+
+if [ -n "$blkexp" ]; then
+    all="$blocks
+$live"
+    case "$all" in *"$blkexp"*) exit 0 ;; *) printf 'expected a block mentioning: %s\ngot: %s\n' "$blkexp" "$all"; exit 1 ;; esac
+fi
+fail() { printf '%s\n' "$1"; exit 1; }
+[ -n "$blocks" ] && fail "$blocks"
+printf '%s\n' "$result" | awk '$1 == "ASSERT" { print $2, $3 }' | while read -r k n; do
+    printf '%s\n' "$result" | grep -q "^FIND $k $n " || { echo "expected a $k finding for $n, there was none"; exit 3; }
+done || exit 1
+if printf '%s\n' "$result" | grep -q '^ASSERTCLEAN'; then
+    [ -z "$live$stale" ] || fail "expected a clean sweep, got:
+$live$stale"
+fi
+printf '%s\n' "$result" | grep -q '^ASSERT' || fail "inventory states no sweep assertion"
+exit 0

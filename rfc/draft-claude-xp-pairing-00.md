@@ -101,7 +101,7 @@ STORY_SPLIT -> STORY_SELECT
 INTEGRATE -> STORY_SELECT
 INTEGRATE -> SESSION_END
 terminal SESSION_END
-guard SESSION_START -> STORY_SELECT: briefing bound
+guard SESSION_START -> STORY_SELECT: briefing bound groom
 guard STORY_SELECT -> PAIR_DECLARE: story acceptance order
 guard STORY_SELECT -> SPIKE: question timebox
 guard SPIKE -> STORY_SELECT: finding discarded
@@ -111,16 +111,16 @@ guard DESIGN -> LOOP: deck
 guard LOOP -> INTEGRATE: loop-complete
 guard LOOP -> STORY_SPLIT: overrun
 guard STORY_SPLIT -> STORY_SELECT: split
-guard INTEGRATE -> STORY_SELECT: suite commit diffstat
-guard INTEGRATE -> SESSION_END: suite commit diffstat
-note SESSION_START: the stand-up, for a pair of two — read the prior run record and state, in one message, what was finished, what is in flight, and what is blocked; attach it as briefing, and attach the system's standing increment bound unchanged
+guard INTEGRATE -> STORY_SELECT: suite commit diffstat sweep
+guard INTEGRATE -> SESSION_END: suite commit diffstat sweep
+note SESSION_START: the stand-up, for a pair of two — read the prior run record and state, in one message, what was finished, what is in flight, and what is blocked; attach it as briefing, attach the system's standing increment bound unchanged, and attach the grooming report of draft-claude-xp-grooming-00 — what drifted, what is unserved, what has aged
 note STORY_SELECT: take the next story from the order derived in draft-claude-xp-order-00, or record why you are departing from it; nothing may be written until the story has an ID and an acceptance criterion in the customer's words; its size is not estimated, because the standing bound already answers that question
 note PAIR_DECLARE: state who drives and who navigates for THIS story; in agent-navigator mode dispatch the navigator with fresh context, never the drafting session
 note SPIKE: timeboxed throwaway — answer the one question, attach the finding, DISCARD the code; a spike that survives to integration was not a spike
 note DESIGN: the design session of draft-claude-xp-design-00 — metaphor, a checked CRC deck, a scenario walked card by card, and simplification; walk that machine to DESIGN_DONE, then attach deck here
 note LOOP: the TDD loop of draft-claude-xp-tdd-loop-00 — walk that machine to LOOP_DONE, then attach loop-complete here
 note STORY_SPLIT: the increment outgrew the standing bound — split the story into an integrable part and a remainder, and return to selection; the bound never moves to fit work already done
-note INTEGRATE: one pair integrates at a time — full suite green, the conformance gate green, one commit, and a diffstat within the standing bound
+note INTEGRATE: one pair integrates at a time — full suite green, the conformance gate green, one commit, a diffstat within the standing bound, and a clean entropy sweep (draft-claude-xp-entropy-00): nothing orphaned, uncarded, untested, hollow, or expired goes unaccounted for
 note SESSION_END: stop; the run record already says what was done, so nothing further is required to close
 ```
 
@@ -157,7 +157,7 @@ stateDiagram-v2
         state who drives and who navigates for THIS story
     end note
     note right of INTEGRATE
-        one pair integrates at a time — full suite green, the conformance gate green, one commit, and a diffstat within the standing bound
+        one pair integrates at a time — full suite green, the conformance gate green, one commit, a diffstat within the standing bound, and a clean entropy sweep (draft-claude-xp-entropy-00): nothing orphaned, uncarded, untested, hollow, or expired goes unaccounted for
     end note
     note right of SPIKE
         timeboxed throwaway — answer the one question, attach the finding, DISCARD the code
@@ -186,12 +186,13 @@ machine STORY_SELECT -> PAIR_DECLARE
 machine PAIR_DECLARE -> LOOP
 machine LOOP -> DONE
 machine terminal DONE
-machine guard SESSION_START -> STORY_SELECT: briefing bound
+machine guard SESSION_START -> STORY_SELECT: briefing bound groom
 machine guard STORY_SELECT -> PAIR_DECLARE: story acceptance order
 machine guard PAIR_DECLARE -> LOOP: mode
-refuse STORY_SELECT missing briefing bound
+refuse STORY_SELECT missing briefing bound groom
 attach briefing: nothing in flight, corpus green
 bound 3 files 150 lines
+attach groom: no drift, no unserved targets
 advance STORY_SELECT
 refuse PAIR_DECLARE missing story acceptance order
 story XP-1
@@ -255,11 +256,12 @@ machine initial SESSION_START
 machine SESSION_START -> STORY_SELECT
 machine STORY_SELECT -> DONE
 machine terminal DONE
-machine guard SESSION_START -> STORY_SELECT: briefing bound
+machine guard SESSION_START -> STORY_SELECT: briefing bound groom
 machine guard STORY_SELECT -> DONE: story acceptance
-refuse STORY_SELECT missing briefing bound
+refuse STORY_SELECT missing briefing bound groom
 attach briefing: standing bound unchanged from last session
 bound 3 files 150 lines
+attach groom: no targets
 advance STORY_SELECT
 refuse DONE missing story acceptance
 story XP-2
@@ -284,10 +286,11 @@ run record already holds what was done. [R-xp-integrate-green]
 machine initial INTEGRATE
 machine INTEGRATE -> SESSION_END
 machine terminal SESSION_END
-machine guard INTEGRATE -> SESSION_END: suite commit diffstat
-refuse SESSION_END missing suite commit diffstat
+machine guard INTEGRATE -> SESSION_END: suite commit diffstat sweep
+refuse SESSION_END missing suite commit diffstat sweep
 suite 41 passed, 0 failed, gate green
 diffstat 2 files 74 lines
+attach sweep: clean — nothing orphaned or expired
 work implement XP-1 against its acceptance criterion
 advance SESSION_END why: story integrated, suite and gate green
 at SESSION_END
@@ -483,6 +486,12 @@ rather than derived from a prior record.
 - draft-claude-xp-tdd-loop-00 — the delegated red/green/refactor machine.
 - draft-claude-xp-order-00 — the derivation behind the `order:` attachment
   at `STORY_SELECT`.
+- draft-claude-xp-grooming-00 — targets, drift, and aging; the derivation
+  behind the `groom:` attachment at `SESSION_START`.
+- draft-claude-xp-entropy-00 — the entropy sweep behind the `sweep:`
+  attachment at `INTEGRATE`: the one guard that forces removal.
+- draft-claude-xp-slop-00 — textual slop signatures, advisory, resolved in
+  the loop's REFACTOR leg.
 - draft-ndn-fsm-session-00 — run records, guards, evidence attachment,
   anchoring, and `--audit`.
 - draft-ndn-executable-plans-00 — the three-verb encapsulation this
@@ -504,6 +513,15 @@ rather than derived from a prior record.
   fresh-context agent navigators follow from the author's requirement that
   the co-driver is sometimes another agent and that feedback is continuous
   over a visible stream.
+- 2026-08-20: `sweep` added to both INTEGRATE guards, consuming
+  draft-claude-xp-entropy-00. Until now every guard in this document
+  constrained what entered the codebase and none forced anything out, so a
+  project could satisfy all of them and still grow without bound; the
+  sweep is the missing direction.
+- 2026-08-20: `groom` added to the SESSION_START guard, consuming
+  draft-claude-xp-grooming-00 — a session cannot open without the pair
+  having seen what drifted from current targets, what target nothing
+  serves, and what has aged.
 - 2026-08-20: the increment bound became a STANDING system constant
   attached at SESSION_START instead of a per-story declaration, and
   per-story size estimates are now forbidden outright. Rationale from the

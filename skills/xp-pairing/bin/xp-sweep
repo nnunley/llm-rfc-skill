@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# xp-sweep — the entropy sweep. Findings block INTEGRATE until dispositioned.
+# Usage: xp-sweep [inventory]   (default: .xp/inventory)
+set -eu
+here="$(cd "$(dirname "$0")/../../.." && pwd)"
+RFC_SKILL="${RFC_SKILL:-$here/skill}"
+exec "$RFC_SKILL/adapters/sweep" --print "${1:-.xp/inventory}"

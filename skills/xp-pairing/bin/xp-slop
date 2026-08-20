@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# xp-slop — scan source for slop signatures (log-comments, comment volume,
+# structural near-duplicates). Advisory: resolve findings in REFACTOR.
+set -eu
+here="$(cd "$(dirname "$0")/../../.." && pwd)"
+RFC_SKILL="${RFC_SKILL:-$here/skill}"
+rc=0
+for f in "$@"; do
+    out=$("$RFC_SKILL/adapters/slop" "$f") || rc=1
+    case "$out" in *"none of the three"*) ;; *) printf '== %s\n%s\n' "$f" "$out" ;; esac
+done
+[ "$rc" -eq 0 ] && echo "xp-slop: clean"
+exit 0

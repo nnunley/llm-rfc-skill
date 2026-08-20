@@ -39,3 +39,6 @@ without this one knowing.
 - draft-claude-xp-tdd-loop-00 — The Paired Test-First Loop (Experimental — delegated from xp-pairing's LOOP stage)
 - draft-claude-xp-design-00 — Metaphor, CRC Decks, and Simple Design (Experimental — delegated from xp-pairing's DESIGN stage)
 - draft-claude-xp-order-00 — Implementation Order Derived from the Deck (Experimental — dependency analysis over the current story set)
+- draft-claude-xp-grooming-00 — Targets, Drift, and Aging (Experimental — grooming as a derivation, no meeting)
+- draft-claude-xp-entropy-00 — The Entropy Sweep (Experimental — code-layer reachability and provenance; the guard that forces removal)
+- draft-claude-xp-slop-00 — Slop Signatures in Source (Experimental — log-comments, comment volume, structural near-duplicates)

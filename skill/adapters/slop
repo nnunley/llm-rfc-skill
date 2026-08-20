@@ -1,0 +1,118 @@
+#!/usr/bin/env bash
+# slop — textual slop detectors over real source. Three signatures:
+#   log-comment  a comment narrating CHANGE HISTORY rather than explaining
+#                the code. History belongs in version control; a comment
+#                that says what the code used to do is an engineering log
+#                left in the source, and it rots on the next edit.
+#   verbose      a run of code more comment than code, restating rather
+#                than explaining.
+#   duplicate    two chunks whose normalised token 3-grams overlap past the
+#                similarity threshold — the near-copy an agent writes when
+#                it is cheaper to author a helper than to find the one that
+#                already exists.
+# Language-agnostic: comments are //, #, --, ;; or /* */; a chunk is a
+# maximal run of non-blank lines. Deterministic; exit 0 clean / 1 findings.
+# Usage: slop [--similarity N] [--density N] <file>
+set -u
+SIM=${SLOP_SIMILARITY:-70}
+DEN=${SLOP_DENSITY:-50}
+while [ $# -gt 1 ]; do
+    case "$1" in
+        --similarity) SIM="$2"; shift 2 ;;
+        --density)    DEN="$2"; shift 2 ;;
+        *) break ;;
+    esac
+done
+f="${1:?usage: slop [--similarity N] [--density N] <file>}"
+
+out=$(awk -v SIM="$SIM" -v DEN="$DEN" '
+    function is_comment(l) { return l ~ /^[[:space:]]*(\/\/|#|--|;;|\*|\/\*)/ }
+    # a STRUCTURAL token stream: identifiers collapse to V and numbers to N,
+    # punctuation is kept. A copy with every name changed still matches,
+    # which is exactly the near-duplicate an agent produces when it writes
+    # a fresh helper instead of finding the one already there.
+    function strip(l,   s, n, i, t, o) {
+        s = l
+        gsub(/"[^"]*"/, " \"\" ", s); gsub(/\047[^\047]*\047/, " \"\" ", s)
+        sub(/\/\/.*$/, "", s); sub(/#.*$/, "", s); sub(/--.*$/, "", s)
+        gsub(/[^A-Za-z0-9_]/, " & ", s)
+        n = split(s, w, /[[:space:]]+/); o = ""
+        for (i = 1; i <= n; i++) {
+            t = w[i]
+            if (t == "") continue
+            if (t ~ /^[0-9]+$/) t = "N"
+            else if (t ~ /^[A-Za-z_][A-Za-z0-9_]*$/) t = "V"
+            o = o " " t
+        }
+        gsub(/^ +| +$/, "", o)
+        return o
+    }
+    BEGIN {
+        # a comment narrating history rather than explaining the code
+        np = 0
+        pat[++np] = "(previously|used to|no longer|originally|formerly)"
+        pat[++np] = "now (handles|uses|returns|supports|does|works|checks)"
+        pat[++np] = "(updated|changed|refactored|renamed|moved|switched) (to|from|this|the|for)"
+        pat[++np] = "(fixed|fixes) (a |the )?(bug|issue|typo|problem|regression)"
+        pat[++np] = "(as|per) (requested|discussed|review|feedback|the review)"
+        pat[++np] = "(we|this) (now|previously|used to|no longer)"
+        pat[++np] = "(instead of|rather than) (the )?(old|previous|original)"
+        pat[++np] = "(added|removed|deleted) (support|handling|this|the) "
+        pat[++np] = "(todo|fixme|hack|xxx)\\((claude|gpt|ai|llm|copilot)\\)"
+        pat[++np] = "(keeping|kept) (this|it) (for|around)"
+    }
+    {
+        line[NR] = $0
+        if ($0 ~ /^[[:space:]]*$/) { blank[NR] = 1; next }
+        low = tolower($0)
+        if (is_comment($0)) {
+            iscom[NR] = 1
+            for (i = 1; i <= np; i++)
+                if (low ~ pat[i]) { print "FIND log-comment " NR " " $0; break }
+        }
+    }
+    END {
+        # chunks: maximal runs of non-blank lines
+        nch = 0; i = 1
+        while (i <= NR) {
+            if (blank[i]) { i++; continue }
+            s = i; while (i <= NR && !blank[i]) i++
+            e = i - 1
+            nch++; cs[nch] = s; ce[nch] = e
+        }
+        for (c = 1; c <= nch; c++) {
+            ncom = 0; ncode = 0; toks = ""
+            for (j = cs[c]; j <= ce[c]; j++) {
+                if (iscom[j]) { ncom++; continue }
+                ncode++
+                t = strip(line[j])
+                if (t != "") toks = toks " " t
+            }
+            if (ncom > 3 && ncode > 0 && (ncom * 100) / (ncom + ncode) >= DEN)
+                print "FIND verbose " cs[c] " " ncom " comment lines to " ncode " code lines"
+            n = split(toks, w, " ")
+            ng[c] = 0
+            for (j = 1; j + 2 <= n; j++) {
+                g = w[j] "|" w[j+1] "|" w[j+2]
+                if (!((c SUBSEP g) in has)) { has[c SUBSEP g] = 1; ng[c]++; gram[c, ng[c]] = g }
+            }
+        }
+        for (a = 1; a <= nch; a++) {
+            if (ng[a] < 8) continue
+            for (b = a + 1; b <= nch; b++) {
+                if (ng[b] < 8) continue
+                inter = 0
+                for (j = 1; j <= ng[a]; j++) if ((b SUBSEP gram[a, j]) in has) inter++
+                uni = ng[a] + ng[b] - inter
+                if (uni <= 0) continue
+                sim = int((inter * 100) / uni)
+                if (sim >= SIM)
+                    print "FIND duplicate " cs[a] " and " cs[b] " are " sim "% the same"
+            }
+        }
+    }
+' "$f")
+
+if [ -n "$out" ]; then printf '%s\n' "$out" | sed 's/^FIND //'; exit 1; fi
+echo "slop: none of the three signatures found"
+exit 0

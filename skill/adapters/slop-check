@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# slop-check — assert what the slop detectors find on a fixture.
+# The fixture is: assertion lines, a line of exactly ---, then SOURCE
+# VERBATIM to end of file. Source is taken verbatim so blank lines (which
+# delimit chunks) survive; nothing about the fixture is escaped or quoted.
+#   expect log-comment <line>
+#   expect verbose <line>
+#   expect duplicate <lineA> <lineB>
+#   expect clean
+set -u
+f="${1:?usage: slop-check <file>}"
+d="$(cd "$(dirname "$0")" && pwd)"
+tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+
+sep=$(awk '$0 == "---" { print NR; exit }' "$f")
+[ -n "$sep" ] || { echo "slop-check: fixture has no --- separator"; exit 1; }
+awk -v n="$sep" 'NR < n' "$f" > "$tmp/expect"
+awk -v n="$sep" 'NR > n' "$f" > "$tmp/src"
+[ -s "$tmp/src" ] || { echo "slop-check: fixture has no source after ---"; exit 1; }
+
+found=$("$d/slop" "$tmp/src") || true
+rc=0
+while read -r kw kind a b; do
+    [ "$kw" = "expect" ] || { echo "slop-check: not an assertion: $kw $kind $a $b"; rc=1; continue; }
+    # arity is part of the assertion: trailing tokens are a typo, not noise
+    case "$kind" in
+        clean)              [ -z "$a$b" ] || { echo "slop-check: 'expect clean' takes no argument: $a $b"; rc=1; continue; } ;;
+        log-comment|verbose) { [ -n "$a" ] && [ -z "$b" ]; } || { echo "slop-check: 'expect $kind' takes exactly one line number: $a $b"; rc=1; continue; } ;;
+        duplicate)          { [ -n "$a" ] && [ -n "$b" ] && [ "${b#* }" = "$b" ]; } || { echo "slop-check: 'expect duplicate' takes exactly two line numbers: $a $b"; rc=1; continue; } ;;
+    esac
+    case "$kind" in
+        clean)
+            case "$found" in *"none of the three signatures"*) ;; *) echo "expected a clean fixture, got:"; printf '%s\n' "$found"; rc=1 ;; esac ;;
+        log-comment|verbose)
+            printf '%s\n' "$found" | grep -q "^$kind $a " || { echo "expected $kind at line $a, got:"; printf '%s\n' "$found"; rc=1; } ;;
+        duplicate)
+            printf '%s\n' "$found" | grep -q "^duplicate $a and $b " || { echo "expected duplicate $a/$b, got:"; printf '%s\n' "$found"; rc=1; } ;;
+        *) echo "slop-check: unknown assertion kind: $kind"; rc=1 ;;
+    esac
+done < "$tmp/expect"
+[ "$rc" -eq 0 ] && echo "slop-check: fixture matches"
+exit "$rc"
