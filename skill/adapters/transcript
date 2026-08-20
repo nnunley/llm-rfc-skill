@@ -9,11 +9,26 @@
 # line that follows it.
 set -u
 f="${1:?usage: transcript <file>}"
-SANDBOX=/tmp/gi-rfc
+# The BCP specifies a LOGICAL path. Making it the PHYSICAL path too made
+# every run share one directory, which is not a sandbox — it is a global
+# mutable directory, and the mutex it then needed turned any killed run
+# into a stale lock that failed every later run. The logical path is
+# preserved by substitution instead: commands are rewritten to the real
+# per-invocation directory on the way in, and its path is rewritten back
+# to the logical one on the way out, so transcripts stay byte-exact while
+# runs cannot see each other. Isolable contention is removed, not
+# serialised; a baton belongs where a resource genuinely cannot be
+# duplicated, and a temporary directory can.
+LOGICAL=/tmp/gi-rfc
+SANDBOX=$(mktemp -d "${TMPDIR:-/tmp%/}/gi-rfc.XXXXXX") || { echo "transcript: cannot create sandbox" >&2; exit 2; }
+# canonical form: substitution is textual, so the stored path must be
+# exactly what the shell will print (no double slash, symlinks resolved)
+SANDBOX=$(cd "$SANDBOX" && pwd -P)
 
 replay() {
     local fails=0 expected="" last_exit=0 last_out="" line want
     local pending="" have_pending=0
+    local outfile; outfile=$(mktemp)
     flush() {
         if [ "$last_out" != "$(printf '%s' "$expected")" ]; then
             echo "DIFF $(basename "$f"):"
@@ -26,7 +41,13 @@ replay() {
     run_pending() {
         [ "$have_pending" = 1 ] || return 0
         flush
-        last_out="$(eval "$pending" 2>&1)"; last_exit=$?
+        # eval in THIS shell, capturing through a file: a command
+        # substitution would sink `cd`, exports and shell state into a
+        # subshell, and a transcript is a session, not a list of one-shots.
+        eval "${pending//$LOGICAL/$SANDBOX}" >"$outfile" 2>&1; last_exit=$?
+        last_out="$(cat "$outfile")"
+        # canonicalise: the transcript speaks the logical path
+        last_out="${last_out//$SANDBOX/$LOGICAL}"
         have_pending=0
     }
     while IFS= read -r line || [ -n "$line" ]; do
@@ -52,20 +73,15 @@ ${line#> }"
     done < "$f"
     run_pending
     flush
+    rm -f "$outfile"
     [ "$last_exit" = 0 ] || { echo "EXIT $(basename "$f"): want 0 got $last_exit"; fails=1; }
     return $fails
 }
 
 SELF_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-# the sandbox path is normative (spec'd logical path) and therefore
-# shared: take a lock so concurrent corpus runs fail loudly, never
-# silently clobber each other mid-replay
-if ! mkdir "$SANDBOX.lock" 2>/dev/null; then
-    echo "transcript: sandbox $SANDBOX busy (concurrent corpus run?) — stale lock: $SANDBOX.lock" >&2
-    exit 2
-fi
-trap 'rm -rf "$SANDBOX" "$SANDBOX.lock"' EXIT
-rm -rf "$SANDBOX" && mkdir -p "$SANDBOX"
+# no lock: the sandbox is per-invocation, so there is nothing to contend
+# for and nothing a killed run can leave behind
+trap 'rm -rf "$SANDBOX"' EXIT
 ( cd "$SANDBOX" && \
   export HOME="$SANDBOX" XDG_CONFIG_HOME="$SANDBOX/.config" GIT_CONFIG_NOSYSTEM=1 && \
   export PATH="$SELF_DIR:$PATH" && \
