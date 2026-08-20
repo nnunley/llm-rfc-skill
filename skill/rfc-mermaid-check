@@ -2,18 +2,13 @@
 # rfc-mermaid-check — render every derived diagram with REAL mermaid.
 # Usage: rfc-mermaid-check <rfc-dir> | rfc-mermaid-check <rfc.md>...
 #
-# rfc-lint holds derived displays to a legal stateDiagram-v2 subset offline,
-# with no toolchain. That check is a model of mermaid, and a model can be
-# wrong: the failure that motivated this tool (an inline note body carrying
-# "->") parsed clean under every hand-written approximation and still put a
-# "Syntax error in text" bomb on the published page. This tool removes the
-# model from the loop — it runs the same mermaid the browser runs, via
-# mermaid-cli, and a diagram counts as verified only when mermaid renders it.
+# rfc-lint's subset check is a model of mermaid; this is mermaid. A diagram
+# counts as verified only when the renderer the browser uses renders it.
 #
-# Deliberately NOT part of rfc-check: the local gate stays dependency-free
-# and offline. This runs in CI, where a Chromium download is acceptable.
-# A missing renderer is a hard error, never a silent pass — an unverifiable
-# diagram must not report the same result as a verified one.
+# Not part of rfc-check: the local gate stays offline and dependency-free,
+# so this runs in CI where a Chromium download is acceptable. A missing
+# renderer is a hard error — an unverifiable diagram must not report the
+# same result as a verified one.
 set -u
 
 [ $# -ge 1 ] || { echo "usage: rfc-mermaid-check <rfc-dir> | rfc-mermaid-check <rfc.md>..." >&2; exit 2; }

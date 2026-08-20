@@ -48,20 +48,14 @@ done
 shift
 [ $# -ge 1 ] || { echo "usage: seatbelt [--allow-write PATH]... -- command args..." >&2; exit 2; }
 
-# A fresh TMPDIR is the workspace of record: adapters that need scratch get
-# it here rather than anywhere on the host.
+# Scratch for adapters that need it; the only writable root they get by
+# default. The input file's directory is deliberately not writable — under
+# `rfc-run --type` it can be any path, including inside the repository
+# under test. Anything else must be declared with --allow-write.
 scratch=$(mktemp -d) || { echo "seatbelt: cannot create scratch dir" >&2; exit 2; }
 trap 'rm -rf "$scratch"' EXIT
 
-# NOT writable: the input file's own directory. In corpus mode that is a
-# tangle temp dir, but `rfc-run --type` accepts a path anywhere — including
-# inside the repository under test — and a run that can write beside its own
-# input can edit the evidence it is being judged against. Adapters needing
-# scratch get TMPDIR; anything else must be declared with --allow-write.
-
-# The transcript adapter's normative workspace (a spec'd logical path, not
-# an implementation detail): permit it so the built-in adapter runs under
-# containment without every caller re-declaring it.
+# The transcript adapter's normative workspace (draft-ndn-authoring-rfcs-00).
 WRITABLE+=("/tmp/gi-rfc" "/tmp/gi-rfc.lock" "$scratch")
 
 profile="$scratch/.seatbelt.sb"

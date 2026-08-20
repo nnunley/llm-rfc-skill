@@ -17,7 +17,8 @@
 # Sandbox providers, per draft-ndn-sandbox-providers-00: every adapter
 # invocation may be wrapped as `provider [flags] -- adapter file`.
 # Selection precedence: --sandbox NAME > RFC_SANDBOX > the series profile
-# file `sandbox` (corpus mode; first non-blank non-# line = name + flags).
+# file `sandbox` (corpus mode; first non-blank non-# line = name + flags) >
+# the platform default from uname, falling back to the env-scrub floor.
 # The reserved name `none` disables wrapping. Provider names resolve like
 # adapters: RFC_SANDBOX_PATH -> series-local sandboxes/ (or --sandbox-dir)
 # -> built-in sandboxes/. A selected provider that cannot be resolved is a
@@ -51,11 +52,9 @@ resolve_sandbox() {
     return 1
 }
 
-# platform_default -> the containment provider this OS can actually run.
-# Isolation is inherently platform-bound: seatbelt is macOS's mechanism,
-# bwrap is Linux's. Naming one in a series profile would make the corpus
-# unrunnable on the other platform, so the LAST resort in the precedence
-# chain is derived from uname rather than declared.
+# Isolation is platform-bound, so the last resort in the precedence chain
+# is derived from uname rather than declared: a provider named in a series
+# profile would make the corpus unrunnable on the other platform.
 platform_default() {
     case "$(uname -s)" in
         Darwin) printf 'seatbelt' ;;
@@ -64,27 +63,21 @@ platform_default() {
     esac
 }
 
-# A platform default is a fallback, NOT a selection, so an unresolvable one
-# is not the hard error that a named provider is — a machine with no
-# containment mechanism must still be able to run its own corpus. It falls
-# back to the env-scrub hygiene floor and says so once: a run with a weaker
-# boundary than the platform intends must never look identical to a
-# contained one.
-# Sets DEFAULT_PROVIDER (and DOWNGRADE_NOTICE when it had to weaken); it
-# must NOT return the path via stdout, because `x=$(f)` would run it in a
-# subshell and the notice would die there — a downgrade nobody is told
-# about is the exact failure this guard exists to prevent.
+# A default is a fallback, not a selection: unlike a named provider, an
+# unresolvable one falls back to the env-scrub hygiene floor rather than
+# failing, and announces it — a weaker boundary than the platform intends
+# must not look identical to a contained run. Sets DEFAULT_PROVIDER and
+# DOWNGRADE_NOTICE; returns nothing on stdout, since `x=$(f)` would run
+# this in a subshell and lose the notice.
 DEFAULT_PROVIDER=""
 DOWNGRADE_NOTICE=""
 DOWNGRADE_SHOWN=""
 default_provider() {
     local series_dir="$1" want p
     DEFAULT_PROVIDER=""
-    # Already inside a boundary: do not re-wrap. Containment is not
-    # re-entrant (sandbox_apply fails inside a seatbelt), and re-wrapping
-    # would also change what a nested bare run MEANS — the corpus contains
-    # evidence asserting that an unwrapped run really is unwrapped.
-    # An explicit --sandbox still wraps; only the default defers.
+    # Containment is not re-entrant: sandbox_apply fails inside a seatbelt,
+    # and the corpus contains evidence asserting that an unwrapped run is
+    # unwrapped. An explicit --sandbox still wraps; only the default defers.
     [ -z "${RFC_SANDBOX_ACTIVE:-}" ] || return 1
     if want=$(platform_default); then
         if p=$(resolve_sandbox "$want" "$series_dir"); then
@@ -169,7 +162,7 @@ for rfc in "$@"; do
     series_adapters="$series_dir/adapters"
     series_sandboxes="${SANDBOX_DIR:-$series_dir/sandboxes}"
 
-    # sandbox selection: flag > env > series profile > none
+    # sandbox selection: flag > env > series profile > platform default
     # (the reserved name `none` is honored only from the --sandbox flag —
     # a stale environment or profile cannot silently defeat the floor)
     if [ "$SANDBOX_FLAG" != none ] && [ "${RFC_SANDBOX:-}" = none ]; then

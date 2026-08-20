@@ -36,11 +36,9 @@ mermaid)
             if (init != "") printf "    [*] --> %s\n", init
             for (i = 1; i <= n; i++) printf "    %s\n", edges[i]
             for (t in term) printf "    %s --> [*]\n", t
-            # Block note form ("note ... end note"), never the inline
-            # "note X: text" form: the inline body is lexed as diagram
-            # source, so a note carrying "->" or "--" (every deadline note
-            # does) is a stateDiagram-v2 parse error. The block body is
-            # lexed as opaque text and displays the arrow verbatim.
+            # Block notes only: mermaid lexes an inline "note X: text"
+            # body as diagram source, so "->" or "--" in it (every deadline
+            # note has one) is a parse error. A block body is opaque text.
             for (t in stnote) printf "    note right of %s\n        %s\n    end note\n", t, stnote[t]
         }
     ' "$f"

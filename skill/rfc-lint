@@ -448,13 +448,12 @@ lint_file() {
         while IFS= read -r p; do err "$f" "FSM: $p"; done <<< "$fsm_problems"
     fi
 
-    # 4d2. Mermaid render check (offline). A verified fsm block is worthless
-    # if its derived display does not parse: the reader sees a "Syntax error
-    # in text" bomb where the machine should be, and nothing in the corpus
-    # notices. rfc-lint derives each block through rfc-fsm-render and holds
-    # the output to the stateDiagram-v2 subset the renderer is allowed to
-    # emit. This runs offline with no toolchain; the authoritative check is
-    # real mermaid in CI (rfc-mermaid-check), which this must never contradict.
+    # 4d2. Mermaid render check (offline): derive each fsm block through
+    # rfc-fsm-render and hold the output to the stateDiagram-v2 subset the
+    # renderer may emit. A verified fsm whose display does not parse still
+    # publishes a syntax error in place of the machine. The authoritative
+    # check is real mermaid in CI (rfc-mermaid-check); this must never
+    # contradict it.
     local mermaid_problems=""
     if [[ "$nfsm" -gt 0 && -x "$LINT_DIR/rfc-fsm-render" ]]; then
         local mtmp midx=0
