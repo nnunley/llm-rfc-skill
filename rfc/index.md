@@ -42,3 +42,4 @@ without this one knowing.
 - draft-claude-xp-grooming-00 — Targets, Drift, and Aging (Experimental — grooming as a derivation, no meeting)
 - draft-claude-xp-entropy-00 — The Entropy Sweep (Experimental — code-layer reachability and provenance; the guard that forces removal)
 - draft-claude-xp-slop-00 — Slop Signatures in Source (Experimental — log-comments, comment volume, structural near-duplicates)
+- draft-claude-xp-dependencies-00 — Dependency Existence and Provenance (Experimental — offline slopsquatting defence)

@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# xp-deps — dependency existence and provenance (offline).
+# Usage: xp-deps [inventory]   (default: .xp/deps)
+set -eu
+here="$(cd "$(dirname "$0")/../../.." && pwd)"
+RFC_SKILL="${RFC_SKILL:-$here/skill}"
+exec "$RFC_SKILL/adapters/deps" --print "${1:-.xp/deps}"

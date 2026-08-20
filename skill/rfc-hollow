@@ -25,6 +25,7 @@ assertion_lines() {
         xp-run|plan-run) awk '$1=="refuse"||$1=="at"||$1=="audit" { print NR }' "$2" ;;
         order)      awk '$1=="expect"||$1=="blocked"||$1=="forced"||$1=="chosen"||$1=="unscoped" { print NR }' "$2" ;;
         groom)      awk '$1=="drifted"||$1=="unserved"||$1=="aged"||$1=="contradiction"||$1=="groomed" { print NR }' "$2" ;;
+        deps)       awk '$1=="undeclared"||$1=="unresolved"||$1=="unused"||$1=="unattributed"||$1=="expired"||$1=="clean" { print NR }' "$2" ;;
         sweep)      awk '$1=="orphan"||$1=="uncarded"||$1=="unrealized"||$1=="untested"||$1=="hollow"||$1=="expired"||$1=="swept"||$1=="blocked" { print NR }' "$2" ;;
         crc-check)  awk '$1=="reject"||$1=="accept" { print NR }' "$2" ;;
         slop-check) awk '$1=="expect" { print NR }' "$2" ;;

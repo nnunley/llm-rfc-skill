@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+# deps — dependency existence and provenance, offline and deterministic.
+#
+# LLMs recommend packages that do not exist (USENIX Security 2025: 19.7% of
+# recommended packages across 16 models), and attackers pre-register the
+# names they invent. The dangerous moment is when an agent INTRODUCES a
+# dependency, and the two loudest signals need no network:
+#   undeclared  — imported but in no manifest: the name was invented, or the
+#                 manifest was never updated
+#   unresolved  — in the manifest but in no lockfile: it never resolved, which
+#                 is what a fabricated name does
+# Registry existence is NOT checked here: it needs the network, so it cannot
+# be corpus evidence. Run it in CI against the real registry, and do not fake
+# it with a transcript that echoes the expected answer — that is manufactured
+# proof, not verification.
+#
+# Usage: deps <file> | deps --print <file>
+#   manifest <Name> [<version>]      declared dependency
+#   locked <Name> <version>          resolved in the lockfile
+#   imports <Unit> <Name>            code reference
+#   stdlib <Name> / vendored <Name>  needs no declaration
+#   origin <Name> <StoryID>          which story introduced it
+#   story/serves/target/retired      shared with the grooming lens
+# Assertions: undeclared/unresolved/unused/unattributed/expired <Name>, clean
+set -u
+PRINT=0
+if [ "${1:-}" = "--print" ]; then PRINT=1; shift; fi
+f="${1:?usage: deps [--print] <file>}"
+
+result=$(awk '
+    { sub(/[[:space:]]*;.*$/, "") }
+    /^[[:space:]]*$/ { next }
+    $1 == "manifest" && (NF == 2 || NF == 3) { man[$2] = 1; morder[++nm] = $2; next }
+    $1 == "locked"   && NF == 3 { lock[$2] = 1; next }
+    $1 == "imports"  && NF == 3 { imp[$3] = 1; if (!($3 in iseen)) { iseen[$3] = 1; iorder[++ni] = $3 }; by[$3] = by[$3] " " $2; next }
+    $1 == "stdlib"   && NF == 2 { std[$2] = 1; next }
+    $1 == "vendored" && NF == 2 { vend[$2] = 1; next }
+    $1 == "origin"   && NF == 3 { orig[$2] = $3; next }
+    $1 == "serves"   && NF == 3 { serves[$2] = $3; next }
+    $1 == "retired"  && NF == 2 { dead[$2] = 1; next }
+    $1 == "target"   && NF >= 2 { next }
+    $1 == "story"    && NF >= 2 { next }
+    $1 == "today"    && NF == 2 { next }
+    $1 == "undeclared"   && NF == 2 { a[++na] = "undeclared "   $2; next }
+    $1 == "unresolved"   && NF == 2 { a[++na] = "unresolved "   $2; next }
+    $1 == "unused"       && NF == 2 { a[++na] = "unused "       $2; next }
+    $1 == "unattributed" && NF == 2 { a[++na] = "unattributed " $2; next }
+    $1 == "expired"      && NF == 2 { a[++na] = "expired "      $2; next }
+    $1 == "clean" && NF == 1 { clean = 1; next }
+    # a malformed statement of our own vocabulary is an error, never a no-op
+    $1=="manifest"||$1=="locked"||$1=="imports"||$1=="stdlib"||$1=="vendored"||$1=="origin"||\
+    $1=="serves"||$1=="retired"||$1=="undeclared"||$1=="unresolved"||$1=="unused"||\
+    $1=="unattributed"||$1=="expired"||$1=="clean" {
+        print "ERROR malformed " $1 " statement: " $0; bad = 1; next
+    }
+    { print "ERROR not a deps statement: " $0; bad = 1 }
+    END {
+        if (bad) exit
+        for (i = 1; i <= na; i++) print "ASSERT " a[i]
+        if (clean) print "ASSERTCLEAN"
+        if (nm == 0 && ni == 0) { print "ERROR inventory declares no dependencies"; exit }
+        for (i = 1; i <= ni; i++) {
+            d = iorder[i]
+            if (d in std || d in vend) continue
+            if (!(d in man)) print "FIND undeclared " d " is imported by" by[d] " but declared in no manifest"
+        }
+        for (i = 1; i <= nm; i++) {
+            d = morder[i]
+            if (!(d in lock)) print "FIND unresolved " d " is declared but resolves to nothing in any lockfile"
+            if (!(d in imp))  print "FIND unused " d " is declared but imported by nothing"
+            if (!(d in orig)) print "FIND unattributed " d " entered with no originating story"
+            else {
+                t = serves[orig[d]]
+                if (t != "" && (t in dead)) print "FIND expired " d " traces to story " orig[d] ", which serves retired target " t
+            }
+        }
+    }
+' "$f") || { echo "deps: derivation failed"; exit 1; }
+
+errors=$(printf '%s\n' "$result" | sed -n 's/^ERROR //p')
+[ -n "$errors" ] && { printf '%s\n' "$errors"; exit 1; }
+finds=$(printf '%s\n' "$result" | sed -n 's/^FIND //p')
+
+if [ "$PRINT" -eq 1 ]; then
+    [ -n "$finds" ] && { printf '%s\n' "$finds"; exit 1; }
+    echo "deps: every dependency is declared, resolved, used, and attributable"; exit 0
+fi
+fail() { printf '%s\n' "$1"; exit 1; }
+printf '%s\n' "$result" | awk '$1=="ASSERT" { print $2, $3 }' | while read -r k n; do
+    printf '%s\n' "$finds" | grep -q "^$k $n " || { echo "expected a $k finding for $n, there was none"; exit 3; }
+done || exit 1
+if printf '%s\n' "$result" | grep -q '^ASSERTCLEAN'; then
+    [ -z "$finds" ] || fail "expected no findings, got:
+$finds"
+fi
+printf '%s\n' "$result" | grep -q '^ASSERT' || fail "inventory states no assertion"
+exit 0

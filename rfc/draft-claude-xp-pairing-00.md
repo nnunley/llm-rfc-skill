@@ -111,8 +111,8 @@ guard DESIGN -> LOOP: deck
 guard LOOP -> INTEGRATE: loop-complete
 guard LOOP -> STORY_SPLIT: overrun
 guard STORY_SPLIT -> STORY_SELECT: split
-guard INTEGRATE -> STORY_SELECT: suite commit diffstat sweep
-guard INTEGRATE -> SESSION_END: suite commit diffstat sweep
+guard INTEGRATE -> STORY_SELECT: suite commit diffstat sweep deps
+guard INTEGRATE -> SESSION_END: suite commit diffstat sweep deps
 note SESSION_START: the stand-up, for a pair of two — read the prior run record and state, in one message, what was finished, what is in flight, and what is blocked; attach it as briefing, attach the system's standing increment bound unchanged, and attach the grooming report of draft-claude-xp-grooming-00 — what drifted, what is unserved, what has aged
 note STORY_SELECT: take the next story from the order derived in draft-claude-xp-order-00, or record why you are departing from it; nothing may be written until the story has an ID and an acceptance criterion in the customer's words; its size is not estimated, because the standing bound already answers that question
 note PAIR_DECLARE: state who drives and who navigates for THIS story; in agent-navigator mode dispatch the navigator with fresh context, never the drafting session
@@ -120,7 +120,7 @@ note SPIKE: timeboxed throwaway — answer the one question, attach the finding,
 note DESIGN: the design session of draft-claude-xp-design-00 — metaphor, a checked CRC deck, a scenario walked card by card, and simplification; walk that machine to DESIGN_DONE, then attach deck here
 note LOOP: the TDD loop of draft-claude-xp-tdd-loop-00 — walk that machine to LOOP_DONE, then attach loop-complete here
 note STORY_SPLIT: the increment outgrew the standing bound — split the story into an integrable part and a remainder, and return to selection; the bound never moves to fit work already done
-note INTEGRATE: one pair integrates at a time — full suite green, the conformance gate green, one commit, a diffstat within the standing bound, and a clean entropy sweep (draft-claude-xp-entropy-00): nothing orphaned, uncarded, untested, hollow, or expired goes unaccounted for
+note INTEGRATE: one pair integrates at a time — full suite green, the conformance gate green, one commit, a diffstat within the standing bound, a clean entropy sweep (draft-claude-xp-entropy-00), and a clean dependency check (draft-claude-xp-dependencies-00): nothing orphaned, untested, hollow, expired, or undeclared goes unaccounted for
 note SESSION_END: stop; the run record already says what was done, so nothing further is required to close
 ```
 
@@ -157,7 +157,7 @@ stateDiagram-v2
         state who drives and who navigates for THIS story
     end note
     note right of INTEGRATE
-        one pair integrates at a time — full suite green, the conformance gate green, one commit, a diffstat within the standing bound, and a clean entropy sweep (draft-claude-xp-entropy-00): nothing orphaned, uncarded, untested, hollow, or expired goes unaccounted for
+        one pair integrates at a time — full suite green, the conformance gate green, one commit, a diffstat within the standing bound, a clean entropy sweep (draft-claude-xp-entropy-00), and a clean dependency check (draft-claude-xp-dependencies-00): nothing orphaned, untested, hollow, expired, or undeclared goes unaccounted for
     end note
     note right of SPIKE
         timeboxed throwaway — answer the one question, attach the finding, DISCARD the code
@@ -286,11 +286,12 @@ run record already holds what was done. [R-xp-integrate-green]
 machine initial INTEGRATE
 machine INTEGRATE -> SESSION_END
 machine terminal SESSION_END
-machine guard INTEGRATE -> SESSION_END: suite commit diffstat sweep
-refuse SESSION_END missing suite commit diffstat sweep
+machine guard INTEGRATE -> SESSION_END: suite commit diffstat sweep deps
+refuse SESSION_END missing suite commit diffstat sweep deps
 suite 41 passed, 0 failed, gate green
 diffstat 2 files 74 lines
 attach sweep: clean — nothing orphaned or expired
+attach deps: clean — every import declared, every declaration resolved
 work implement XP-1 against its acceptance criterion
 advance SESSION_END why: story integrated, suite and gate green
 at SESSION_END
@@ -490,6 +491,8 @@ rather than derived from a prior record.
   behind the `groom:` attachment at `SESSION_START`.
 - draft-claude-xp-entropy-00 — the entropy sweep behind the `sweep:`
   attachment at `INTEGRATE`: the one guard that forces removal.
+- draft-claude-xp-dependencies-00 — the dependency check behind the
+  `deps:` attachment at `INTEGRATE`.
 - draft-claude-xp-slop-00 — textual slop signatures, advisory, resolved in
   the loop's REFACTOR leg.
 - draft-ndn-fsm-session-00 — run records, guards, evidence attachment,
@@ -513,6 +516,9 @@ rather than derived from a prior record.
   fresh-context agent navigators follow from the author's requirement that
   the co-driver is sometimes another agent and that feedback is continuous
   over a visible stream.
+- 2026-08-20: `deps` added to both INTEGRATE guards, consuming
+  draft-claude-xp-dependencies-00 — a hallucinated package is the one form
+  of accretion that is directly exploitable.
 - 2026-08-20: `sweep` added to both INTEGRATE guards, consuming
   draft-claude-xp-entropy-00. Until now every guard in this document
   constrained what entered the codebase and none forced anything out, so a
