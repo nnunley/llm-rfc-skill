@@ -55,8 +55,7 @@ shift
 scratch=$(mktemp -d) || { echo "seatbelt: cannot create scratch dir" >&2; exit 2; }
 trap 'rm -rf "$scratch"' EXIT
 
-# The transcript adapter's normative workspace (draft-ndn-authoring-rfcs-00).
-WRITABLE+=("/tmp/gi-rfc" "/tmp/gi-rfc.lock" "$scratch")
+WRITABLE+=("$scratch")
 
 profile="$scratch/.seatbelt.sb"
 {
