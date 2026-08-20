@@ -361,6 +361,51 @@ $ grep -c '^\$ true$' out/draft-a-x-00.w.transcript
 1
 ```
 
+### Invocation isolation
+
+A concrete path a document gives for machine state — a sandbox root, a
+session state file, a run record — names a **logical** location, not a
+physical one that every invocation shares. An implementation MUST give
+each invocation its own physical location behind that name, and MUST NOT
+read a specified path as a mandate to share one. [R-logical-state-path]
+Where an implementation supplies a private physical location for a fixed
+logical path, it MUST canonicalise in both directions, so evidence stays
+byte-exact.
+
+Sharing one physical location is not isolation; it is a global mutable
+directory. It forces a cross-run mutex, and a mutex whose holder cannot
+be told apart from a dead one turns a killed run into a lock that fails
+every later run with a false negative until a human intervenes. The
+failure is worse than a crash, because it is silent and it accuses the
+wrong change: a corpus that has not been touched starts reporting red.
+Contention that can be removed MUST be removed rather than serialised —
+serialisation is for resources that genuinely cannot be duplicated, and
+a directory or a state file can be.
+
+The rule spans both things this series drives: the execution of evidence,
+and the execution of the processes an RFC describes. It is stated here,
+once, so that a new execution surface inherits it instead of restating
+it; draft-ndn-sandbox-providers-00 and draft-ndn-fsm-session-00 are
+instances, not independent rules.
+
+The witness nests one execution inside another, which is concurrency
+without a race to lose: the inner invocation is handed the same logical
+path, and MUST NOT see the outer invocation's state or disturb it.
+
+```transcript @R-logical-state-path
+$ printf outer > marker
+$ cat > inner.transcript <<'EOF'
+> $ pwd
+> /tmp/gi-rfc
+> $ test -e marker; echo $?
+> 1
+> EOF
+$ rfc-run --type transcript inner.transcript >/dev/null 2>&1; echo $?
+0
+$ cat marker
+outer
+```
+
 ### Lifecycle
 
 Publication REQUIRES the document's embedded evidence to replay green —
@@ -842,3 +887,16 @@ constrained is excluded from judging its own conformance.
   keys are attached to the FROM state's run record [R-fsm-guard]; the
   grammar gains the production, and guards stay engine-free (evidence
   requirements, not hooks).
+- 2026-08-20: invocation isolation added as a general rule
+  [R-logical-state-path]: a path a document gives for machine state is
+  logical, and each invocation gets its own physical location behind it.
+  This existed only as two specific statements — a sandbox MUST in
+  draft-ndn-sandbox-providers-00 and unevidenced prose about concurrent
+  session files in draft-ndn-fsm-session-00 — so a third execution
+  surface would have had to rediscover it. It was rediscovered: a shared
+  physical sandbox at a fixed path produced a stale lock that failed
+  every later corpus run with a false negative, and cost one agent an
+  afternoon and a wrong root cause before the shared path was identified
+  as the defect rather than the platform. The witness nests one
+  execution inside another, and fails against the pre-fix shared-sandbox
+  implementation, so it is falsifiable rather than tautological.
