@@ -1,0 +1,25 @@
+# xp-run — the XP pairing vocabulary, as DATA
+# (draft-claude-xp-pairing-00, draft-claude-xp-tdd-loop-00). Executor
+# verbs plus the domain's own words for the evidence a pair produces;
+# rfc-flow is the runner; no fixture program exists.
+env repo
+set X rfc-fsm-exec xp.fsm --state run
+collect machine >> xp.fsm
+boot rfc-run --type fsm xp.fsm
+boot rfc-fsm-exec xp.fsm --state run
+refuse {t} missing {k*} => {X} {t} ! exit 1 ! out missing: {k*}
+attach {kv*} => {X} --attach "{kv*}" ! exit 0
+story {id} => {X} --attach "story: {id}" ! exit 0
+accept {a*} => {X} --attach "acceptance: {a*}" ! exit 0
+bound {n} files {m} lines => {X} --attach "bound: {n} files {m} lines" ! exit 0
+diffstat {n} files {m} lines => {X} --attach "diffstat: {n} files {m} lines" ! exit 0
+pair {m} => {X} --attach "mode: {m}" ! exit 0
+suite {s*} => {X} --attach "suite: {s*}" ! exit 0
+red {t*} => {X} --attach "red-test: {t*}" ! exit 0
+green {t*} => {X} --attach "green-test: {t*}" ! exit 0
+advance {t} why: {w*} => {X} {t} --why "{w*}" ! exit 0
+advance {t} => {X} {t} ! exit 0
+at {s} => {X} ! exit 0 ! out state: {s}
+work {m*} => sh -c 'printf "%s\n" "$1" > w.txt && git add -A && git commit -qm "$1" && rfc-fsm-exec xp.fsm --state run --attach "commit: $(git rev-parse --short=12 HEAD)"' _ "{m*}" ! exit 0
+audit ok => {X} --audit ! exit 0
+audit fail {x*} => {X} --audit ! exit 1 ! out {x*}

@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# crc — structural adapter for CRC decks: unique cards, the index-card
+# responsibility budget, collaborator closure, root reachability, and
+# metaphor terms bound to real cards. Deterministic; exit 0 conform /
+# 1 violate with findings on stdout.
+#
+# Deck syntax (leading whitespace ignored):
+#   metaphor <text>        the system metaphor, at most one
+#   term <Card>            a metaphor term; MUST name a declared card
+#   root <Card>            an entry point of the design
+#   card <Name>            begins a card
+#   does <text>            a responsibility of the current card (1..3)
+#   uses <Name>            a collaborator: a declared card or external
+#   external <Name>        a collaborator outside this deck
+set -u
+f="${1:?usage: crc <file>}"
+problems=$(awk '
+    { sub(/^[[:space:]]+/, ""); sub(/[[:space:]]*;.*$/, "") }
+    /^[[:space:]]*$/ { next }
+    $1 == "metaphor" && NF >= 2 { if (metaphor != "") print "duplicate metaphor"; metaphor = $0; next }
+    $1 == "term" && NF == 2 { terms[$2] = 1; next }
+    $1 == "root" && NF == 2 { roots[$2] = 1; nroots++; next }
+    $1 == "external" && NF == 2 { if ($2 in ext) print "duplicate external " $2; ext[$2] = 1; next }
+    $1 == "card" && NF == 2 {
+        if ($2 in cards) print "duplicate card " $2
+        cur = $2; cards[cur] = 1; order[++ncards] = cur; next
+    }
+    $1 == "does" && NF >= 2 {
+        if (cur == "") { print "responsibility outside any card: " $0; next }
+        nresp[cur]++; next
+    }
+    $1 == "uses" && NF == 2 {
+        if (cur == "") { print "collaborator outside any card: " $0; next }
+        if ($2 == cur) print "card " cur " collaborates with itself"
+        adj[cur] = adj[cur] " " $2; used[$2] = 1; next
+    }
+    { print "not a crc statement: " $0 }
+    END {
+        if (ncards == 0) { print "deck declares no cards"; exit }
+        if (nroots == 0) print "deck declares no root"
+        for (i = 1; i <= ncards; i++) {
+            c = order[i]
+            if (nresp[c] == 0) print "card " c " has no responsibilities"
+            else if (nresp[c] > 3) print "card " c " carries " nresp[c] " responsibilities (an index card holds 3)"
+            n = split(adj[c], a, " ")
+            for (j = 1; j <= n; j++)
+                if (a[j] != "" && !(a[j] in cards) && !(a[j] in ext))
+                    print "unknown collaborator " a[j] " on card " c
+        }
+        for (r in roots) if (!(r in cards)) print "root " r " is not a declared card"
+        qn = 0
+        for (r in roots) if (r in cards) { q[qn++] = r; seen[r] = 1 }
+        for (qi = 0; qi < qn; qi++) {
+            n = split(adj[q[qi]], a, " ")
+            for (j = 1; j <= n; j++) if (a[j] != "" && (a[j] in cards) && !(a[j] in seen)) { seen[a[j]] = 1; q[qn++] = a[j] }
+        }
+        for (i = 1; i <= ncards; i++) if (!(order[i] in seen)) print "card " order[i] " is unreachable from any root"
+        for (t in terms) {
+            if (metaphor == "") { print "metaphor term " t " declared without a metaphor"; continue }
+            if (!(t in cards)) print "metaphor term " t " is not a card — the metaphor is decorative"
+        }
+        for (e in ext) if (!(e in used)) print "external " e " is never used"
+    }
+' "$f")
+if [ -n "$problems" ]; then printf '%s\n' "$problems"; exit 1; fi
+exit 0

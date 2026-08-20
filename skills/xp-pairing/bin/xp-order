@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# xp-order — derive the next stories from the deck and the story set.
+# Usage: xp-order [problem]     (default: .xp/order.problem)
+# The problem file embeds the deck as `deck <crc-line>` lines plus
+# `story <ID> priority <N> realizes <Card>...` and `built <Card>`.
+set -eu
+here="$(cd "$(dirname "$0")/../../.." && pwd)"
+RFC_SKILL="${RFC_SKILL:-$here/skill}"
+exec "$RFC_SKILL/adapters/order" --print "${1:-.xp/order.problem}"

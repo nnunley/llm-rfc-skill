@@ -1,0 +1,7 @@
+# crc-check — deck acceptance and rejection as evidence, as DATA
+# (draft-claude-xp-design-00). The deck is assembled from `deck` lines and
+# the verdict asserted; rfc-flow is the runner; no fixture program exists.
+set C rfc-run --type crc deck.crc
+collect deck >> deck.crc
+accept => {C} ! exit 0
+reject {x*} => {C} ! exit 1 ! out {x*}

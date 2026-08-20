@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# xp-run — type registration only: the vocabulary is data
+# (vocabs/xp-run.vocab), the runner is generic (rfc-flow). No fixture.
+d="$(cd "$(dirname "$0")/.." && pwd)"
+exec "$d/rfc-flow" "$d/vocabs/xp-run.vocab" "${1:?usage: xp-run <file>}"

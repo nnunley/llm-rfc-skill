@@ -1,0 +1,176 @@
+#!/usr/bin/env bash
+# order — implementation order derived from a CRC deck and a story set.
+# The deck's `uses` edges are a hard partial order; story priority resolves
+# what the graph leaves free. Deterministic: the same problem always yields
+# the same order, and every position is reported as forced (the graph left
+# no choice) or chosen (priority decided among ready stories).
+#
+# Usage: order <file>           verify the file's expect/blocked assertions
+#        order --print <file>   print the derived order (interactive use)
+#
+# Problem syntax:
+#   deck <crc-line>                    the deck, in crc syntax (see adapters/crc)
+#   story <ID> priority <N> realizes <Card>...
+#   built <Card>                       already implemented
+#   expect <ID>...                     the derived order MUST equal this
+#   blocked <text>                     derivation MUST fail, mentioning <text>
+set -u
+PRINT=0
+if [ "${1:-}" = "--print" ]; then PRINT=1; shift; fi
+f="${1:?usage: order [--print] <file>}"
+d="$(cd "$(dirname "$0")" && pwd)"
+tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+
+awk '$1 == "deck" { sub(/^[[:space:]]*deck[[:space:]]?/, ""); print }' "$f" > "$tmp/deck.crc"
+if [ -s "$tmp/deck.crc" ]; then
+    if ! deckout=$("$d/crc" "$tmp/deck.crc"); then
+        printf 'deck rejected:\n%s\n' "$deckout"; exit 1
+    fi
+fi
+
+result=$(awk '
+    function satisfied(c) { return (c in built) || (c in ext) }
+    { sub(/[[:space:]]*;.*$/, "") }
+    /^[[:space:]]*$/ { next }
+    $1 == "deck" {
+        sub(/^[[:space:]]*deck[[:space:]]?/, ""); sub(/^[[:space:]]+/, "")
+        if ($1 == "card")     { cur = $2; cards[cur] = 1 }
+        else if ($1 == "uses")     { uses[cur] = uses[cur] " " $2 }
+        else if ($1 == "external") { ext[$2] = 1 }
+        next
+    }
+    $1 == "story" && $3 == "priority" && $5 == "realizes" && NF >= 6 {
+        id = $2
+        if (id in prio) { print "ERROR duplicate story " id; bad = 1; next }
+        prio[id] = $4 + 0; sorder[++nst] = id
+        for (i = 6; i <= NF; i++) { real[id] = real[id] " " $i; owner[$i] = id }
+        next
+    }
+    $1 == "built" && NF == 2 { built[$2] = 1; next }
+    $1 == "expect" { for (i = 2; i <= NF; i++) want[++nexp] = $i; hasexp = 1; next }
+    $1 == "forced" && NF == 2 { af[++naf] = $2; next }
+    $1 == "chosen" && NF == 2 { ac[++nac] = $2; next }
+    $1 == "unscoped" && NF == 2 { au[++nau] = $2; next }
+    $1 == "blocked" { blk = $0; sub(/^[[:space:]]*blocked[[:space:]]+/, "", blk); hasblk = 1; next }
+    { print "ERROR not an order statement: " $0; bad = 1 }
+    END {
+        if (bad) exit
+        # assertions are announced BEFORE derivation: a blocked derivation
+        # exits early, and the verdict must still know what was asserted
+        for (i = 1; i <= nexp; i++) print "EXPECT " want[i]
+        if (hasexp) print "HASEXPECT"
+        if (hasblk) print "BLOCKEXPECT " blk
+        for (i = 1; i <= naf; i++) print "ASSERTFORCED " af[i]
+        for (i = 1; i <= nac; i++) print "ASSERTCHOSEN " ac[i]
+        for (i = 1; i <= nau; i++) print "ASSERTUNSCOPED " au[i]
+        if (nst == 0) { print "ERROR problem declares no stories"; exit }
+
+        # scope: only cards some current story needs, transitively
+        qn = 0
+        for (i = 1; i <= nst; i++) {
+            n = split(real[sorder[i]], a, " ")
+            for (j = 1; j <= n; j++) if (a[j] != "" && !(a[j] in scope)) { scope[a[j]] = 1; q[qn++] = a[j] }
+        }
+        for (qi = 0; qi < qn; qi++) {
+            n = split(uses[q[qi]], a, " ")
+            for (j = 1; j <= n; j++) if (a[j] != "" && !(a[j] in scope)) { scope[a[j]] = 1; q[qn++] = a[j] }
+        }
+        for (c in cards) if (!(c in scope)) print "SCOPE " c " is not needed by any current story"
+
+        # a dependency nothing will ever build is a hard block
+        for (c in scope)
+            if (!satisfied(c) && !(c in owner))
+                print "BLOCK no story realizes card " c
+
+        # dependencies of a story: what its cards use, minus what it builds itself
+        for (i = 1; i <= nst; i++) {
+            id = sorder[i]
+            split("", mine)
+            n = split(real[id], a, " ")
+            for (j = 1; j <= n; j++) if (a[j] != "") mine[a[j]] = 1
+            for (j = 1; j <= n; j++) {
+                if (a[j] == "") continue
+                m = split(uses[a[j]], b, " ")
+                for (k = 1; k <= m; k++)
+                    if (b[k] != "" && !(b[k] in mine)) deps[id] = deps[id] " " b[k]
+            }
+        }
+
+        emitted = 0
+        while (emitted < nst) {
+            # ready set, in (priority, id) order
+            nr = 0
+            for (i = 1; i <= nst; i++) {
+                id = sorder[i]
+                if (id in done) continue
+                ok = 1
+                n = split(deps[id], a, " ")
+                for (j = 1; j <= n; j++) if (a[j] != "" && !satisfied(a[j])) { ok = 0; break }
+                if (ok) ready[++nr] = id
+            }
+            if (nr == 0) {
+                s = ""
+                for (i = 1; i <= nst; i++) if (!(sorder[i] in done)) s = s (s == "" ? "" : " ") sorder[i]
+                print "BLOCK no story is ready — stories depend on each other in a cycle: " s
+                exit
+            }
+            # deterministic pick: lowest priority number, then lowest id
+            best = ready[1]
+            for (i = 2; i <= nr; i++) {
+                c = ready[i]
+                if (prio[c] < prio[best] || (prio[c] == prio[best] && c < best)) best = c
+            }
+            if (nr == 1) print "STEP " best " forced"
+            else {
+                others = ""
+                for (i = 1; i <= nr; i++) if (ready[i] != best) others = others (others == "" ? "" : " ") ready[i] "(p" prio[ready[i]] ")"
+                print "STEP " best " chosen p" prio[best] " over " others
+            }
+            done[best] = 1; emitted++
+            n = split(real[best], a, " ")
+            for (j = 1; j <= n; j++) if (a[j] != "") built[a[j]] = 1
+        }
+    }
+' "$f")
+
+steps=$(printf '%s\n' "$result" | awk '$1 == "STEP" { print $2 }')
+blocks=$(printf '%s\n' "$result" | sed -n 's/^BLOCK //p')
+errors=$(printf '%s\n' "$result" | sed -n 's/^ERROR //p')
+scope=$(printf '%s\n' "$result" | sed -n 's/^SCOPE //p')
+expect=$(printf '%s\n' "$result" | awk '$1 == "EXPECT" { print $2 }')
+hasexp=$(printf '%s\n' "$result" | grep -c '^HASEXPECT' || true)
+blkexp=$(printf '%s\n' "$result" | sed -n 's/^BLOCKEXPECT //p')
+
+if [ "$PRINT" -eq 1 ]; then
+    [ -n "$scope" ] && printf 'out of scope (YAGNI):\n%s\n' "$scope"
+    if [ -n "$errors$blocks" ]; then printf '%s%s\n' "$errors" "$blocks"; exit 1; fi
+    printf '%s\n' "$result" | awk '$1 == "STEP" { $1 = ""; printf "%d.%s\n", ++n, $0 }'
+    exit 0
+fi
+
+if [ -n "$errors" ]; then printf '%s\n' "$errors"; exit 1; fi
+
+if [ -n "$blkexp" ]; then
+    if [ -z "$blocks" ]; then echo "expected derivation to be blocked, but it succeeded"; exit 1; fi
+    case "$blocks" in *"$blkexp"*) exit 0 ;; *) printf 'expected block mentioning: %s\ngot: %s\n' "$blkexp" "$blocks"; exit 1 ;; esac
+fi
+
+if [ -n "$blocks" ]; then printf '%s\n' "$blocks"; exit 1; fi
+
+for id in $(printf '%s\n' "$result" | awk '$1 == "ASSERTFORCED" { print $2 }'); do
+    printf '%s\n' "$result" | grep -q "^STEP $id forced$" || { echo "expected $id to be forced by the graph, it was not"; exit 1; }
+done
+for id in $(printf '%s\n' "$result" | awk '$1 == "ASSERTCHOSEN" { print $2 }'); do
+    printf '%s\n' "$result" | grep -q "^STEP $id chosen" || { echo "expected $id to be a priority choice, it was not"; exit 1; }
+done
+for c in $(printf '%s\n' "$result" | awk '$1 == "ASSERTUNSCOPED" { print $2 }'); do
+    printf '%s\n' "$result" | grep -q "^SCOPE $c " || { echo "expected $c to be out of scope, it was not"; exit 1; }
+done
+
+if [ "$hasexp" -gt 0 ]; then
+    got=$(printf '%s\n' "$steps" | tr '\n' ' ')
+    want=$(printf '%s\n' "$expect" | tr '\n' ' ')
+    if [ "$got" != "$want" ]; then printf 'order mismatch\n  derived: %s\n  expected: %s\n' "$got" "$want"; exit 1; fi
+    exit 0
+fi
+echo "problem states no expectation (expect/blocked)"; exit 1

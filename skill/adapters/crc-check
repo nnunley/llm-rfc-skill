@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# crc-check — type registration only: the vocabulary is data
+# (vocabs/crc-check.vocab), the runner is generic (rfc-flow). Exists so a
+# deck's REJECTIONS are evidence too, not just its acceptances.
+d="$(cd "$(dirname "$0")/.." && pwd)"
+exec "$d/rfc-flow" "$d/vocabs/crc-check.vocab" "${1:?usage: crc-check <file>}"

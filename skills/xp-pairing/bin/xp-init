@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# xp-init — derive the XP machines from their RFCs and seed the run record.
+# The .fsm files are DERIVED artifacts: never edit them, edit the RFC.
+# Usage: xp-init [workdir]   (default: ./.xp)
+set -eu
+
+here="$(cd "$(dirname "$0")/../../.." && pwd)"          # repo root
+RFC_SKILL="${RFC_SKILL:-$here/skill}"
+RFC_DIR="${RFC_DIR:-$here/rfc}"
+out="${1:-.xp}"
+
+[ -x "$RFC_SKILL/rfc-tangle" ] || { echo "xp-init: set RFC_SKILL to the authoring-rfcs skill dir" >&2; exit 2; }
+
+mkdir -p "$out"
+tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+
+"$RFC_SKILL/rfc-tangle" "$RFC_DIR/draft-claude-xp-pairing-00.md"  "$tmp" >/dev/null
+"$RFC_SKILL/rfc-tangle" "$RFC_DIR/draft-claude-xp-tdd-loop-00.md" "$tmp" >/dev/null
+"$RFC_SKILL/rfc-tangle" "$RFC_DIR/draft-claude-xp-design-00.md"   "$tmp" >/dev/null
+
+cp "$tmp/draft-claude-xp-pairing-00.xp-session.fsm" "$out/session.fsm"
+cp "$tmp/draft-claude-xp-tdd-loop-00.xp-loop.fsm"   "$out/loop.fsm"
+cp "$tmp/draft-claude-xp-design-00.xp-design-machine.fsm" "$out/design.fsm"
+
+# the machines must be structurally valid before anything walks them
+"$RFC_SKILL/rfc-run" --type fsm "$out/session.fsm"
+"$RFC_SKILL/rfc-run" --type fsm "$out/loop.fsm"
+"$RFC_SKILL/rfc-run" --type fsm "$out/design.fsm"
+
+: > "$out/session.run.tmp"
+[ -f "$out/session.run" ] || {
+    printf '# machine: draft-claude-xp-pairing-00 @R-xp-session\n' > "$out/session.run"
+}
+rm -f "$out/session.run.tmp"
+
+[ -f "$out/bound" ] || printf '3 files 150 lines\n' > "$out/bound"
+
+echo "xp-init: standing increment bound: $(cat "$out/bound") (edit $out/bound deliberately; never per story)"
+echo "xp-init: machines in $out (session.fsm, design.fsm, loop.fsm); run record $out/session.run"
+echo "next: $RFC_SKILL/rfc-fsm-exec $out/session.fsm --state $out/session.run"

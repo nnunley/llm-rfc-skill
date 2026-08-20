@@ -35,3 +35,7 @@ without this one knowing.
 - draft-claude-accessibility-audit-00 — Multi-Agent Accessibility Audit (Informational, PAAD agentic-a11y)
 - draft-claude-alignment-check-00 — Requirements/Design/Plan Alignment (Informational, PAAD alignment)
 - draft-claude-vibe-guardrails-00 — Guardrailed Lightweight Changes (Informational, PAAD vibe)
+- draft-claude-xp-pairing-00 — Extreme Programming for Human–Agent Pairing (Experimental — executable: the session is a guarded machine)
+- draft-claude-xp-tdd-loop-00 — The Paired Test-First Loop (Experimental — delegated from xp-pairing's LOOP stage)
+- draft-claude-xp-design-00 — Metaphor, CRC Decks, and Simple Design (Experimental — delegated from xp-pairing's DESIGN stage)
+- draft-claude-xp-order-00 — Implementation Order Derived from the Deck (Experimental — dependency analysis over the current story set)

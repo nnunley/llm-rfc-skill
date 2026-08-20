@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# seatbelt — macOS sandbox provider: a real containment boundary, not the
+# hygiene floor. Where env-scrub only swaps HOME/XDG and leaves the whole
+# filesystem writable, this denies by default and allows writes only to
+# declared roots, with network denied outright.
+#
+# Contract (draft-ndn-sandbox-providers-00): seatbelt [flags] -- cmd args...
+#   --allow-write PATH   additional writable root (repeatable)
+# Exits with the inner command's status; nonzero of its own if setup fails.
+# Does not read, parse, or interpret the inner command's output.
+#
+# Reads stay broad on purpose: an adapter must be able to exec the system
+# toolchain (git, awk, the dynamic linker). The property being enforced is
+# that a conformance run cannot WRITE outside its workspace or reach the
+# network — the two ways replayed evidence could touch the host it is
+# supposed to be describing.
+set -u
+
+command -v sandbox-exec > /dev/null 2>&1 || {
+    echo "seatbelt: sandbox-exec not found — this provider is macOS-only" >&2
+    exit 2
+}
+
+# Seatbelt matches RESOLVED paths: /tmp is a symlink to /private/tmp, and a
+# rule naming the symlink silently matches nothing. Resolve every root.
+# A root that does not exist yet still needs resolving — the adapter
+# creates its workspace and lock INSIDE the sandbox, so those rules must
+# already name the real path. Resolve through the nearest existing parent.
+resolve() {
+    local p="$1" parent leaf
+    parent="$(dirname "$p")"; leaf="$(basename "$p")"
+    if [ -d "$parent" ]; then
+        printf '%s/%s\n' "$(cd "$parent" && pwd -P)" "$leaf"
+    else
+        printf '%s\n' "$p"
+    fi
+}
+
+WRITABLE=()
+while [ $# -gt 0 ] && [ "$1" != "--" ]; do
+    case "$1" in
+        --allow-write) [ $# -ge 2 ] || { echo "seatbelt: --allow-write needs a path" >&2; exit 2; }
+                       WRITABLE+=("$2"); shift 2 ;;
+        *)             shift ;;
+    esac
+done
+[ "${1:-}" = "--" ] || { echo "usage: seatbelt [--allow-write PATH]... -- command args..." >&2; exit 2; }
+shift
+[ $# -ge 1 ] || { echo "usage: seatbelt [--allow-write PATH]... -- command args..." >&2; exit 2; }
+
+# A fresh TMPDIR is the workspace of record: adapters that need scratch get
+# it here rather than anywhere on the host.
+scratch=$(mktemp -d) || { echo "seatbelt: cannot create scratch dir" >&2; exit 2; }
+trap 'rm -rf "$scratch"' EXIT
+
+# NOT writable: the input file's own directory. In corpus mode that is a
+# tangle temp dir, but `rfc-run --type` accepts a path anywhere — including
+# inside the repository under test — and a run that can write beside its own
+# input can edit the evidence it is being judged against. Adapters needing
+# scratch get TMPDIR; anything else must be declared with --allow-write.
+
+# The transcript adapter's normative workspace (a spec'd logical path, not
+# an implementation detail): permit it so the built-in adapter runs under
+# containment without every caller re-declaring it.
+WRITABLE+=("/tmp/gi-rfc" "/tmp/gi-rfc.lock" "$scratch")
+
+profile="$scratch/.seatbelt.sb"
+{
+    echo '(version 1)'
+    echo '(deny default)'
+    echo '(allow process-exec process-fork signal sysctl-read)'
+    echo '(allow file-read*)'
+    echo '(allow file-write-data (literal "/dev/null") (literal "/dev/zero")'
+    echo '                       (literal "/dev/tty") (literal "/dev/dtracehelper"))'
+    echo '(allow file-read-data file-write-data (literal "/dev/random") (literal "/dev/urandom"))'
+    echo '(deny network*)'
+    for w in "${WRITABLE[@]}"; do
+        printf '(allow file-write* (subpath "%s"))\n' "$(resolve "$w")"
+    done
+} > "$profile"
+
+TMPDIR="$scratch" exec sandbox-exec -f "$profile" "$@"
