@@ -175,7 +175,7 @@ story-id   = ALPHA *( ALPHA / DIGIT / "-" / "_" )
 ```
 
 Target, story, `serves`, and `retired` statements are shared with
-draft-claude-xp-grooming-00.
+draft-claude-xp-backlog-00.
 
 ## Alternatives Considered
 
@@ -250,7 +250,7 @@ document means writing an inventory generator first, as its own story.
 - Slopsquatting, named by Seth Larson (Python Software Foundation).
 - draft-claude-xp-entropy-00 — the code-layer sweep this parallels at the
   dependency layer.
-- draft-claude-xp-grooming-00 — targets and retirement, which `expired`
+- draft-claude-xp-backlog-00 — targets and retirement, which `expired`
   reads.
 - RFC 5234 (ABNF), RFC 2119, RFC 8174 (BCP 14).
 

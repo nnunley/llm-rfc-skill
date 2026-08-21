@@ -14,7 +14,7 @@ Four documents specify this:
 - `rfc/draft-claude-xp-pairing-00.md` — the session machine (`@R-xp-session`)
 - `rfc/draft-claude-xp-design-00.md` — the design machine (`@R-xp-design-machine`)
 - `rfc/draft-claude-xp-tdd-loop-00.md` — the loop machine (`@R-xp-loop`)
-- `rfc/draft-claude-xp-order-00.md` — how implementation order is derived
+- `rfc/draft-claude-xp-backlog-00.md` — how implementation order is derived
 
 ## Setup, once per session
 

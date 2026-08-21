@@ -249,7 +249,7 @@ audit ok
 
 The deck is a property of the system, not of a session: one deck, extended
 by each design session, carried across sessions and stories. This is what
-makes draft-claude-xp-order-00's derivation possible, since ordering needs a
+makes draft-claude-xp-backlog-00's derivation possible, since ordering needs a
 graph spanning more than the story in hand. Cards are added when a story
 needs them and deleted when nothing does; the reachability rule above makes
 an orphaned card visible, and an orphan is a card to remove rather than to
@@ -375,7 +375,7 @@ here, which is the intended accommodation rather than a gap.
 ## Changelog
 
 - 2026-08-19: the deck declared a persistent system artifact rather than a
-  per-session one, so draft-claude-xp-order-00 can derive implementation
+  per-session one, so draft-claude-xp-backlog-00 can derive implementation
   order from a graph spanning the current story set.
 - 2026-08-19: DRAFT created as the design session delegated from
   draft-claude-xp-pairing-00. Specifies the metaphor, CRC deck, walkthrough,

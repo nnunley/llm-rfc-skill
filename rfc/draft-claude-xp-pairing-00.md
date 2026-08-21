@@ -70,7 +70,13 @@ when, and only when, they appear in all capitals, as shown here.
 - **session** — one contiguous working period, opened by a briefing and
   closed by a recorded velocity. The unit the session machine walks.
 - **story** — a unit of customer-visible behavior with an acceptance
-  criterion, identified by a stable ID.
+  criterion, identified by a stable ID. The same object prime-radiant's
+  iterative-development extracts at project scale; one story, one ID space.
+- **acceptance criterion** — what must be true for the story to be done, in
+  the customer's words. Each criterion carries one or more **proof
+  obligations** (draft-claude-iterative-development-00): which seam — unit,
+  integration, or end-to-end — the evidence must inhabit. The criterion says
+  what; the obligation says where it is witnessed.
 - **spike** — a timeboxed throwaway investigation answering one question.
   Its code is discarded, never integrated.
 - **run record** — the session's persisted path and evidence, per
@@ -113,8 +119,8 @@ guard LOOP -> STORY_SPLIT: overrun
 guard STORY_SPLIT -> STORY_SELECT: split
 guard INTEGRATE -> STORY_SELECT: suite commit diffstat sweep deps
 guard INTEGRATE -> SESSION_END: suite commit diffstat sweep deps
-note SESSION_START: the stand-up, for a pair of two — read the prior run record and state, in one message, what was finished, what is in flight, and what is blocked; attach it as briefing, attach the system's standing increment bound unchanged, and attach the grooming report of draft-claude-xp-grooming-00 — what drifted, what is unserved, what has aged
-note STORY_SELECT: take the next story from the order derived in draft-claude-xp-order-00, or record why you are departing from it; nothing may be written until the story has an ID and an acceptance criterion in the customer's words; its size is not estimated, because the standing bound already answers that question
+note SESSION_START: the stand-up, for a pair of two — survey OUTSTANDING EFFORT before the human names a priority: the prior run record, the current iteration's open stories, the issue queue, and any cross-agent ledger; state in one message what was finished, what is in flight, what is blocked, and what another agent is holding. Attach it as briefing, attach the standing increment bound unchanged, and attach the grooming report of draft-claude-xp-backlog-00
+note STORY_SELECT: the human names the priority they arrived with; compare it against the order derived in draft-claude-xp-backlog-00, say plainly where the two differ, then take theirs and record the departure — the derivation advises, the customer decides; nothing may be written until the story has an ID and an acceptance criterion in the customer's words; its size is not estimated, because the standing bound already answers that question
 note PAIR_DECLARE: state who drives and who navigates for THIS story; in agent-navigator mode dispatch the navigator with fresh context, never the drafting session
 note SPIKE: timeboxed throwaway — answer the one question, attach the finding, DISCARD the code; a spike that survives to integration was not a spike
 note DESIGN: the design session of draft-claude-xp-design-00 — metaphor, a checked CRC deck, a scenario walked card by card, and simplification; walk that machine to DESIGN_DONE, then attach deck here
@@ -163,10 +169,10 @@ stateDiagram-v2
         timeboxed throwaway — answer the one question, attach the finding, DISCARD the code
     end note
     note right of SESSION_START
-        the stand-up, for a pair of two — read the prior run record and state, in one message, what was finished, what is in flight, and what is blocked
+        the stand-up, for a pair of two — survey OUTSTANDING EFFORT before the human names a priority: the prior run record, the current iteration's open stories, the issue queue, and any cross-agent ledger
     end note
     note right of STORY_SELECT
-        take the next story from the order derived in draft-claude-xp-order-00, or record why you are departing from it
+        the human names the priority they arrived with
     end note
 ```
 
@@ -207,7 +213,7 @@ at LOOP
 ```
 
 The `order:` attachment records which derivation the selection followed,
-per draft-claude-xp-order-00; a story set with no deck records `order: no
+per draft-claude-xp-backlog-00; a story set with no deck records `order: no
 deck`, which is the honest value early in a system's life.
 
 ### Size is bounded, never estimated
@@ -310,10 +316,10 @@ disposition.
 
 | XP rule | Disposition | Translation |
 |---|---|---|
-| User stories | **here** | The story contract guarded at `STORY_SELECT`: an ID and an acceptance criterion in the customer's words. No estimate — a card's worth, and nothing about size. Their *order* is derived from the deck, not negotiated (draft-claude-xp-order-00) |
+| User stories | **here** | The story contract guarded at `STORY_SELECT`: an ID and an acceptance criterion in the customer's words. No estimate — a card's worth, and nothing about size. Their *order* is derived from the deck, not negotiated (draft-claude-xp-backlog-00) |
 | Release planning | rejected | It negotiates scope against a date with a customer who is elsewhere. Here the customer is in the room and answers at `STORY_SELECT`; a negotiation ceremony for a conversation that already happens is pure overhead |
 | Make frequent small releases | **here** | Every story integrates green under the standing bound. "Small" is the bound and "frequent" is per story — both mechanical, neither planned nor estimated |
-| Project divided into iterations | **here** | The session is the iteration: opened by a briefing, closed when the pair stops. No separate cadence is imposed on top of it |
+| Project divided into iterations | delegated → iterative-development | Iterations are `ITER-NNNN` at project scale (draft-claude-iterative-development-00, Jesse Vincent / prime-radiant). A session is a working period *inside* an iteration, never a synonym for one |
 | Iteration planning | rejected | Its content is choosing the next story, which is `STORY_SELECT` — and the sequencing part of it is computed from the design graph rather than discussed. Naming that a meeting adds a stage to the machine and nothing to the work |
 | Dedicated open work space | **here** | The streamed transcript is the workspace; the shared space is visibility of the diff as it is written, which is why the standing bound is a guard |
 | Set a sustainable pace | **here** | Bounded increments and an interrupt point between every leg of the loop; sustainability for a pair whose agent does not tire means the human's review capacity, which is what the bound rations |
@@ -485,9 +491,9 @@ rather than derived from a prior record.
   presentation of XP against which this document's lighter readings of
   planning and velocity were checked.
 - draft-claude-xp-tdd-loop-00 — the delegated red/green/refactor machine.
-- draft-claude-xp-order-00 — the derivation behind the `order:` attachment
+- draft-claude-xp-backlog-00 — the derivation behind the `order:` attachment
   at `STORY_SELECT`.
-- draft-claude-xp-grooming-00 — targets, drift, and aging; the derivation
+- draft-claude-xp-backlog-00 — targets, drift, and aging; the derivation
   behind the `groom:` attachment at `SESSION_START`.
 - draft-claude-xp-entropy-00 — the entropy sweep behind the `sweep:`
   attachment at `INTEGRATE`: the one guard that forces removal.
@@ -511,11 +517,20 @@ rather than derived from a prior record.
   one human and one agent (or two agents with a human customer), as an
   executable session machine with hard guards on story contract, pair
   composition, increment bound, and whole-suite integration. Rule
-  dispositions recorded in full: eighteen translated here, seven delegated
+  dispositions recorded in full: seventeen translated here, eight delegated
   to child documents, four rejected. Per-story pair composition and
   fresh-context agent navigators follow from the author's requirement that
   the co-driver is sometimes another agent and that feedback is continuous
   over a visible stream.
+- 2026-08-21: three integration defects fixed against
+  draft-claude-iterative-development-00 (Jesse Vincent / prime-radiant).
+  "The session is the iteration" collided directly with `ITER-NNNN`:
+  iterations are project scale and a session runs inside one. Acceptance
+  criteria and proof obligations are now linked rather than competing — the
+  criterion says what, the obligation says at which seam it is witnessed.
+  SESSION_START's briefing surveys outstanding effort (iteration, issue
+  queue, cross-agent ledger), because a session begins with the human's
+  current priority and that priority needs context to be exercised well.
 - 2026-08-20: `deps` added to both INTEGRATE guards, consuming
   draft-claude-xp-dependencies-00 — a hallucinated package is the one form
   of accretion that is directly exploitable.
@@ -525,7 +540,7 @@ rather than derived from a prior record.
   project could satisfy all of them and still grow without bound; the
   sweep is the missing direction.
 - 2026-08-20: `groom` added to the SESSION_START guard, consuming
-  draft-claude-xp-grooming-00 — a session cannot open without the pair
+  draft-claude-xp-backlog-00 — a session cannot open without the pair
   having seen what drifted from current targets, what target nothing
   serves, and what has aged.
 - 2026-08-20: the increment bound became a STANDING system constant
@@ -536,7 +551,7 @@ rather than derived from a prior record.
   which the standing bound signals directly. `bound` left the STORY_SELECT
   guard for the SESSION_START guard.
 - 2026-08-19: `order` added to the STORY_SELECT guard, consuming the
-  derivation of draft-claude-xp-order-00 — the ordering question the
+  derivation of draft-claude-xp-backlog-00 — the ordering question the
   rejected planning ceremony used to answer is now computed from the deck.
 - 2026-08-19: planning-game delegation dropped and the velocity guard
   removed, after the author's objection to planning ceremony. User stories,

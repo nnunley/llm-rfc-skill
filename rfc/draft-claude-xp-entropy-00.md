@@ -134,7 +134,7 @@ about whether code "looks used": it states that the reason this code was
 written was withdrawn on a date, by the person who withdrew it. Deletion
 arguments elsewhere are guesses; this one is a citation. The chain is
 already recorded — the run record anchors each commit to its story, and
-draft-claude-xp-grooming-00 binds stories to targets — so the sweep reads
+draft-claude-xp-backlog-00 binds stories to targets — so the sweep reads
 provenance rather than inventing it. [R-xp-expired-traceable]
 
 An expired unit MUST NOT be deleted by the sweep itself. Like a drifted
@@ -246,7 +246,7 @@ text        = VCHAR *( WSP / VCHAR )
 ```
 
 Target, story, `serves`, `retired`, and `today` statements are shared with
-draft-claude-xp-grooming-00 and carry the same meaning here.
+draft-claude-xp-backlog-00 and carry the same meaning here.
 
 ## Alternatives Considered
 
@@ -283,7 +283,7 @@ fail, and either outcome is better than the file.
 ### Age-based deletion of code
 
 Delete code untouched for N months. Rejected for the reason age-based
-escalation was rejected in draft-claude-xp-grooming-00: age is not value.
+escalation was rejected in draft-claude-xp-backlog-00: age is not value.
 Stable code is often the best code in a repository, and its stability is
 evidence of correctness rather than of abandonment.
 
@@ -335,7 +335,7 @@ sweep report fiction.
 - draft-claude-xp-pairing-00 — the session machine whose `INTEGRATE` guard
   the sweep blocks, and the corpus rule this document mirrors at the code
   layer.
-- draft-claude-xp-grooming-00 — targets, retirement, and the story→target
+- draft-claude-xp-backlog-00 — targets, retirement, and the story→target
   binding the `expired` finding reads.
 - draft-claude-xp-design-00 — the cards `implements` names, and the
   reachability rule this document generalises.
