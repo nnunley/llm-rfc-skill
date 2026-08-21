@@ -38,7 +38,5 @@ without this one knowing.
 - draft-claude-xp-pairing-00 — Extreme Programming for Human–Agent Pairing (Experimental — executable: the session is a guarded machine)
 - draft-claude-xp-tdd-loop-00 — The Paired Test-First Loop (Experimental — delegated from xp-pairing's LOOP stage)
 - draft-claude-xp-backlog-00 — The Backlog Derivation (Experimental — targets, drift, aging, and dependency ordering in one derivation)
+- draft-claude-xp-drift-00 — Resisting Drift at the Gate (Experimental — structural sweep, supply-chain checks, textual slop signatures)
 - draft-claude-xp-design-00 — Metaphor, CRC Decks, and Simple Design (Experimental — delegated from xp-pairing's DESIGN stage)
-- draft-claude-xp-entropy-00 — The Entropy Sweep (Experimental — code-layer reachability and provenance; the guard that forces removal)
-- draft-claude-xp-slop-00 — Slop Signatures in Source (Experimental — log-comments, comment volume, structural near-duplicates)
-- draft-claude-xp-dependencies-00 — Dependency Existence and Provenance (Experimental — offline slopsquatting defence)
