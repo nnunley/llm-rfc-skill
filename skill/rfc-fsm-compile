@@ -84,19 +84,14 @@ for round in 1 2 3 4 5 6 7 8; do
                 rterm[$3] = $5; nret++; next          # consumed: becomes an edge
             }
             if ($1 == "initial") { print (($2 == S) ? "initial " S "/" cinit : raw); next }
-            if ($1 == "note") { n = $2; sub(/:$/, "", n)
-                if (n == S) print "note " S "/" cinit ":" substr(raw, index(raw, ":") + 1)
-                else print raw
-                next }
+            if ($1 == "note") { print raw; next }
             if ($1 == "guard" && $3 == "->") { g = $4; sub(/:$/, "", g)
                 r = ""; for (i = 5; i <= NF; i++) r = r " " $i
-                if (g == S)      { print "guard " $2 " -> " S "/" cinit ":" r; next }
                 if ($2 == S)     { outguard[g] = r; next }   # re-attached below
-                print raw; next }
+                print raw; next }                            # entry guard stays put
             if (NF == 3 && $2 == "->") {
-                if ($3 == S) { print $1 " -> " S "/" cinit; next }
                 if ($1 == S) { next }                        # replaced by returns
-                print raw; next }
+                print raw; next }                            # edges into S survive
             print raw
         }
         END {
@@ -104,6 +99,10 @@ for round in 1 2 3 4 5 6 7 8; do
                 if (!(t in rterm)) { print "COMPILE-ERROR child terminal " t " of " S " has no return mapping" > "/dev/stderr"; bad = 1 }
             for (t in rterm)
                 if (!(t in cterm)) { print "COMPILE-ERROR return " S " " t " names no terminal of the child machine" > "/dev/stderr"; bad = 1 }
+            # the boundary: entering the sub-workflow is its own transition,
+            # so the walk records a descent instead of teleporting into
+            # the states of another document
+            print S " -> " S "/" cinit
             for (t in rterm) {
                 print S "/" t " -> " rterm[t]
                 if (rterm[t] in outguard) print "guard " S "/" t " -> " rterm[t] ":" outguard[rterm[t]]
