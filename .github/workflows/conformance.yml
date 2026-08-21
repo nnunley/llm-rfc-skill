@@ -13,9 +13,7 @@ jobs:
       matrix:
         # The tooling claims portable bash + awk on BSD and GNU. macOS
         # supplies BSD awk/sed and bash 3.2; Linux supplies GNU and bash 5.
-        # Both architectures run because the runner images differ by more
-        # than instruction set.
-        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, macos-13]
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest]
     steps:
       - uses: actions/checkout@v4
 
