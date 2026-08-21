@@ -79,17 +79,19 @@ SURPRISE -> HALT
 GREEN -> REFACTOR
 GREEN -> ROLLBACK
 ROLLBACK -> RED
+ROLLBACK -> SPLIT_NEEDED
 REFACTOR -> RED
 REFACTOR -> REVIEW
 REVIEW -> RED
 REVIEW -> LOOP_DONE
-terminal LOOP_DONE HALT
+terminal LOOP_DONE HALT SPLIT_NEEDED
 guard RED -> GREEN: red-test
 guard RED -> SURPRISE: observed
 guard SURPRISE -> HALT: report
 guard GREEN -> REFACTOR: green-test diffstat
 guard GREEN -> ROLLBACK: overrun
 guard ROLLBACK -> RED: reverted
+guard ROLLBACK -> SPLIT_NEEDED: split
 guard REFACTOR -> RED: suite
 guard REFACTOR -> REVIEW: suite
 guard REVIEW -> RED: navigator-change
@@ -102,6 +104,7 @@ note REFACTOR: improve the code with the tests green — duplication, naming, de
 note REVIEW: the navigator reads the diff as written and signs off or asks for a change; in agent-navigator mode the navigator MUST be dispatched with fresh context
 note LOOP_DONE: the story's behaviors are implemented, the suite is green, and the navigator signed off; the parent session may now integrate
 note HALT: the story ends here unintegrated — the finding goes back to the customer
+note SPLIT_NEEDED: the rollback showed the STORY is too big, not just the behaviour — return to the session to split it rather than trying again smaller
 ```
 
 ```mermaid
@@ -113,12 +116,14 @@ stateDiagram-v2
     GREEN --> REFACTOR
     GREEN --> ROLLBACK
     ROLLBACK --> RED
+    ROLLBACK --> SPLIT_NEEDED
     REFACTOR --> RED
     REFACTOR --> REVIEW
     REVIEW --> RED
     REVIEW --> LOOP_DONE
     HALT --> [*]
     LOOP_DONE --> [*]
+    SPLIT_NEEDED --> [*]
     note right of HALT
         the story ends here unintegrated — the finding goes back to the customer
     end note
@@ -136,6 +141,9 @@ stateDiagram-v2
     end note
     note right of GREEN
         write the SIMPLEST code that passes the test
+    end note
+    note right of SPLIT_NEEDED
+        the rollback showed the STORY is too big, not just the behaviour — return to the session to split it rather than trying again smaller
     end note
     note right of REVIEW
         the navigator reads the diff as written and signs off or asks for a change
@@ -354,6 +362,11 @@ behavior: the pair sets up a runner first, as its own story.
 
 ## Changelog
 
+- 2026-08-21: SPLIT_NEEDED added as a third terminal. The parent machine
+  had an edge to STORY_SPLIT that no terminal of this machine could reach,
+  so the outcome "this story is too big" was expressible at session scale
+  and unreachable from inside the loop. Found by compiling the two machines
+  together; neither document showed it alone.
 - 2026-08-19: DRAFT created as the loop delegated from
   draft-claude-xp-pairing-00's LOOP stage. Guards red-before-green on an
   observed failure, green-to-refactor on an observed pass within the

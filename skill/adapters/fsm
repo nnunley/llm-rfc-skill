@@ -13,6 +13,20 @@ problems=$(awk '
     $1 == "initial" && NF == 2 { if (init != "") print "duplicate initial"; init = $2; states[$2] = 1; next }
     $1 == "terminal" { for (i = 2; i <= NF; i++) { term[$i] = 1; states[$i] = 1 } next }
     $1 == "note" { nname = $2; sub(/:$/, "", nname); noted[nname] = 1; next }
+    # a subprocess state delegates to the machine of another document (a
+    # BPMN call activity). The return mapping is what makes the delegation
+    # checkable: without it a child terminal can have nowhere to go.
+    $1 == "subprocess" && NF == 4 && $2 ~ /:$/ && $4 ~ /^@R-/ {
+        sname = $2; sub(/:$/, "", sname)
+        if (sname in subp) print "duplicate subprocess for " sname
+        subp[sname] = 1; sdoc[sname] = $3; next
+    }
+    $1 == "return" && NF == 5 && $4 == "->" {
+        rfrom = $2; rterm = $3; rto = $5
+        key = rfrom SUBSEP rterm
+        if (key in rets) print "duplicate return for " rfrom " " rterm
+        rets[key] = 1; rf[key] = rfrom; rt[key] = rto; nret++; next
+    }
     $1 == "deadline" && ((NF == 4 && $3 == "->") || (NF == 5 && $4 == "->" && $3 ~ dre)) {
         s = $2; t = (NF == 4 ? $4 : $5)
         if (s in dl) print "duplicate deadline for " s
@@ -47,6 +61,19 @@ problems=$(awk '
         for (s in term) if (s in outdeg) print "terminal " s " has outgoing transitions"
         for (s in states) if (!(s in term) && !(s in outdeg)) print "dead end: " s
         for (s in noted) if (!(s in states)) print "note references undeclared state " s
+        for (s in subp) {
+            if (!(s in states)) { print "subprocess references undeclared state " s; continue }
+            if (s in term) print "terminal state " s " cannot delegate to a subprocess"
+            n = 0
+            for (k in rets) if (rf[k] == s) n++
+            if (n == 0) print "subprocess " s " declares no return: every child terminal needs somewhere to go"
+        }
+        for (k in rets) {
+            if (!(rf[k] in subp)) { print "return declared for " rf[k] ", which is not a subprocess state"; continue }
+            if (!(rt[k] in states)) { print "return target " rt[k] " is not a declared state"; continue }
+            if (!((rf[k] SUBSEP rt[k]) in trans))
+                print "return " rf[k] " -> " rt[k] " is not a declared transition"
+        }
         if ("timeout" in states) print "state name timeout is reserved"
         for (k in guards)
             if (!((gfrom[k] SUBSEP gto[k]) in trans))

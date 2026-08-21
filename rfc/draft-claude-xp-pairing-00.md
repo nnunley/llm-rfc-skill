@@ -101,6 +101,8 @@ SPIKE -> STORY_SELECT
 PAIR_DECLARE -> LOOP
 PAIR_DECLARE -> DESIGN
 DESIGN -> LOOP
+DESIGN -> SPIKE
+LOOP -> STORY_SELECT
 LOOP -> INTEGRATE
 LOOP -> STORY_SPLIT
 STORY_SPLIT -> STORY_SELECT
@@ -114,17 +116,26 @@ guard SPIKE -> STORY_SELECT: finding discarded
 guard PAIR_DECLARE -> LOOP: mode
 guard PAIR_DECLARE -> DESIGN: mode
 guard DESIGN -> LOOP: deck
+guard DESIGN -> SPIKE: question timebox
+guard LOOP -> STORY_SELECT: report
 guard LOOP -> INTEGRATE: loop-complete
 guard LOOP -> STORY_SPLIT: overrun
 guard STORY_SPLIT -> STORY_SELECT: split
 guard INTEGRATE -> STORY_SELECT: suite commit diffstat drift
 guard INTEGRATE -> SESSION_END: suite commit diffstat drift
+subprocess DESIGN: draft-claude-xp-design-00 @R-xp-design-machine
+return DESIGN DESIGN_DONE -> LOOP
+return DESIGN DESIGN_ABANDON -> SPIKE
+subprocess LOOP: draft-claude-xp-tdd-loop-00 @R-xp-loop
+return LOOP LOOP_DONE -> INTEGRATE
+return LOOP HALT -> STORY_SELECT
+return LOOP SPLIT_NEEDED -> STORY_SPLIT
 note SESSION_START: the stand-up, for a pair of two — survey OUTSTANDING EFFORT before the human names a priority: the prior run record, the current iteration's open stories, the issue queue, and any cross-agent ledger; state in one message what was finished, what is in flight, what is blocked, and what another agent is holding. Attach it as briefing, attach the standing increment bound unchanged, and attach the grooming report of draft-claude-xp-backlog-00
 note STORY_SELECT: the human names the priority they arrived with; compare it against the order derived in draft-claude-xp-backlog-00, say plainly where the two differ, then take theirs and record the departure — the derivation advises, the customer decides; nothing may be written until the story has an ID and an acceptance criterion in the customer's words; its size is not estimated, because the standing bound already answers that question
 note PAIR_DECLARE: state who drives and who navigates for THIS story; in agent-navigator mode dispatch the navigator with fresh context, never the drafting session
 note SPIKE: timeboxed throwaway — answer the one question, attach the finding, DISCARD the code; a spike that survives to integration was not a spike
-note DESIGN: the design session of draft-claude-xp-design-00 — metaphor, a checked CRC deck, a scenario walked card by card, and simplification; walk that machine to DESIGN_DONE, then attach deck here
-note LOOP: the TDD loop of draft-claude-xp-tdd-loop-00 — walk that machine to LOOP_DONE, then attach loop-complete here
+note DESIGN: the design session of draft-claude-xp-design-00 — it returns two ways: DESIGN_DONE brings back a deck and enters the loop, DESIGN_ABANDON brings back a question and enters a spike — metaphor, a checked CRC deck, a scenario walked card by card, and simplification; walk that machine to DESIGN_DONE, then attach deck here
+note LOOP: the TDD loop of draft-claude-xp-tdd-loop-00 — it returns two ways: LOOP_DONE integrates, HALT ends the story unintegrated and returns to selection with the report — walk that machine to LOOP_DONE, then attach loop-complete here
 note STORY_SPLIT: the increment outgrew the standing bound — split the story into an integrable part and a remainder, and return to selection; the bound never moves to fit work already done
 note INTEGRATE: one pair integrates at a time — full suite green, the conformance gate green, one commit, a diffstat within the standing bound, and a clean drift check (draft-claude-xp-drift-00): nothing orphaned, untested, hollow, expired, or undeclared goes unaccounted for
 note SESSION_END: stop; the run record already says what was done, so nothing further is required to close
@@ -141,6 +152,8 @@ stateDiagram-v2
     PAIR_DECLARE --> LOOP
     PAIR_DECLARE --> DESIGN
     DESIGN --> LOOP
+    DESIGN --> SPIKE
+    LOOP --> STORY_SELECT
     LOOP --> INTEGRATE
     LOOP --> STORY_SPLIT
     STORY_SPLIT --> STORY_SELECT
@@ -148,7 +161,7 @@ stateDiagram-v2
     INTEGRATE --> SESSION_END
     SESSION_END --> [*]
     note right of DESIGN
-        the design session of draft-claude-xp-design-00 — metaphor, a checked CRC deck, a scenario walked card by card, and simplification
+        the design session of draft-claude-xp-design-00 — it returns two ways: DESIGN_DONE brings back a deck and enters the loop, DESIGN_ABANDON brings back a question and enters a spike — metaphor, a checked CRC deck, a scenario walked card by card, and simplification
     end note
     note right of STORY_SPLIT
         the increment outgrew the standing bound — split the story into an integrable part and a remainder, and return to selection
@@ -157,7 +170,7 @@ stateDiagram-v2
         stop
     end note
     note right of LOOP
-        the TDD loop of draft-claude-xp-tdd-loop-00 — walk that machine to LOOP_DONE, then attach loop-complete here
+        the TDD loop of draft-claude-xp-tdd-loop-00 — it returns two ways: LOOP_DONE integrates, HALT ends the story unintegrated and returns to selection with the report — walk that machine to LOOP_DONE, then attach loop-complete here
     end note
     note right of PAIR_DECLARE
         state who drives and who navigates for THIS story
@@ -518,6 +531,14 @@ rather than derived from a prior record.
   fresh-context agent navigators follow from the author's requirement that
   the co-driver is sometimes another agent and that feedback is continuous
   over a visible stream.
+- 2026-08-21: two unhandled subprocess returns fixed. DESIGN had one
+  outgoing edge but draft-claude-xp-design-00 has two terminals, so a
+  session reaching DESIGN_ABANDON was stranded — the only legal move was
+  guarded on a deck an abandoned design does not have. LOOP looked correct
+  on arity and was not: HALT would have had to return through STORY_SPLIT,
+  which is guarded on overrun, and a halt is not an overrun. Found by
+  comparing child terminals against parent edges, which is the check a
+  compiled global machine would make automatically.
 - 2026-08-21: `sweep` and `deps` collapse into one `drift` guard key,
   following the consolidation of their three documents into
   draft-claude-xp-drift-00.

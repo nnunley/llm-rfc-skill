@@ -413,6 +413,11 @@ lint_file() {
                 adj[from] = adj[from] " " to
                 next
             }
+            # delegation: a subprocess state and the mapping of the child
+            # machine terminals back onto this one. Structural checks live in
+            # adapters/fsm; lint only needs to accept the statements.
+            if (w[i0] == "subprocess" && n - i0 + 1 == 4) { next }
+            if (w[i0] == "return" && n - i0 + 1 == 5 && w[i0+3] == "->") { next }
             print "line " NR ": not an fsm statement: " $0
         }
         function delete_arrays(   k) {

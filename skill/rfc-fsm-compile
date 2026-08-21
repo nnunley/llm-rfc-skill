@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+# rfc-fsm-compile — flatten a nested process into one global machine.
+#
+# A subprocess is a call activity: a state that delegates to another
+# document's machine. Compiling inlines the child at the delegating state,
+# so the WHOLE process is validated by the ordinary fsm adapter — single
+# initial, reachability, terminal closure, dead ends — instead of each
+# document being checked in isolation while the joins between them are
+# checked by nobody. The interface errors it catches (a child terminal with
+# nowhere to return, a parent edge no child terminal reaches) are invisible
+# in either document alone.
+#
+# Usage: rfc-fsm-compile <rfc.md> [--tag @R-...] [--rfc-dir DIR]
+# Emits the flat machine on stdout. Feed it to: rfc-run --type fsm -
+set -u
+SELF="$(cd "$(dirname "$0")" && pwd)"
+RFC=""; TAG=""; RFCDIR=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --tag) TAG="$2"; shift 2 ;;
+        --rfc-dir) RFCDIR="$2"; shift 2 ;;
+        *) RFC="$1"; shift ;;
+    esac
+done
+[ -n "$RFC" ] && [ -f "$RFC" ] || { echo "usage: rfc-fsm-compile <rfc.md> [--tag @R-...] [--rfc-dir DIR]" >&2; exit 2; }
+RFCDIR="${RFCDIR:-$(dirname "$RFC")}"
+tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+
+# doc + @R-tag -> the tangled .fsm path for that block
+resolve() {
+    local doc="$1" tag="$2" d
+    d="$tmp/t.$doc"
+    [ -f "$RFCDIR/$doc.md" ] || { echo "rfc-fsm-compile: no such document: $RFCDIR/$doc.md" >&2; return 1; }
+    mkdir -p "$d"; "$SELF/rfc-tangle" "$RFCDIR/$doc.md" "$d" >/dev/null 2>&1
+    local want="$d/$doc.${tag#@R-}.fsm"
+    [ -f "$want" ] || { echo "rfc-fsm-compile: $doc has no fsm block tagged $tag" >&2; return 1; }
+    printf '%s\n' "$want"
+}
+
+root_doc=$(basename "$RFC" .md)
+mkdir -p "$tmp/root"; "$SELF/rfc-tangle" "$RFC" "$tmp/root" >/dev/null 2>&1
+if [ -n "$TAG" ]; then
+    cur="$tmp/root/$root_doc.${TAG#@R-}.fsm"
+else
+    set -- "$tmp/root"/*.fsm
+    [ $# -eq 1 ] || { echo "rfc-fsm-compile: $root_doc has $# fsm blocks; use --tag" >&2; exit 2; }
+    cur="$1"
+fi
+[ -f "$cur" ] || { echo "rfc-fsm-compile: no fsm block found" >&2; exit 2; }
+cp "$cur" "$tmp/work.fsm"
+
+# expand one subprocess per round until none remain (a child may itself
+# delegate; its declarations arrive prefixed and are picked up next round)
+for round in 1 2 3 4 5 6 7 8; do
+    line=$(awk '$1 == "subprocess" { print; exit }' "$tmp/work.fsm")
+    [ -n "$line" ] || break
+    S=$(printf '%s\n' "$line" | awk '{ sub(/:$/, "", $2); print $2 }')
+    DOC=$(printf '%s\n' "$line" | awk '{ print $3 }')
+    T=$(printf '%s\n' "$line" | awk '{ print $4 }')
+    child=$(resolve "$DOC" "$T") || exit 1
+    awk -v S="$S" '
+        function px(x) { return S "/" x }
+        FNR == NR {                                    # the child machine
+            sub(/[[:space:]]*;.*$/, ""); if ($0 ~ /^[[:space:]]*$/) next
+            if ($1 == "initial")  { cinit = $2; next }
+            if ($1 == "terminal") { for (i = 2; i <= NF; i++) cterm[$i] = 1; next }
+            if ($1 == "note")     { n = $2; sub(/:$/, "", n)
+                                    print "note " px(n) ":" substr($0, index($0, ":") + 1); next }
+            if ($1 == "guard" && $3 == "->") { g = $4; sub(/:$/, "", g)
+                                    r = ""; for (i = 5; i <= NF; i++) r = r " " $i
+                                    print "guard " px($2) " -> " px(g) ":" r; next }
+            if ($1 == "subprocess") { n = $2; sub(/:$/, "", n)
+                                    print "subprocess " px(n) ": " $3 " " $4; next }
+            if ($1 == "return")   { print "return " px($2) " " $3 " -> " px($5); next }
+            if ($1 == "deadline") { print "deadline " px($2) " " substr($0, index($0, $3)); next }
+            if (NF == 3 && $2 == "->") { print px($1) " -> " px($3); next }
+            next
+        }
+        {                                              # the parent machine
+            raw = $0; sub(/[[:space:]]*;.*$/, ""); if ($0 ~ /^[[:space:]]*$/) next
+            if ($1 == "subprocess") { n = $2; sub(/:$/, "", n); if (n == S) next; print raw; next }
+            if ($1 == "return") {
+                if ($2 != S) { print raw; next }
+                rterm[$3] = $5; nret++; next          # consumed: becomes an edge
+            }
+            if ($1 == "initial") { print (($2 == S) ? "initial " S "/" cinit : raw); next }
+            if ($1 == "note") { n = $2; sub(/:$/, "", n)
+                if (n == S) print "note " S "/" cinit ":" substr(raw, index(raw, ":") + 1)
+                else print raw
+                next }
+            if ($1 == "guard" && $3 == "->") { g = $4; sub(/:$/, "", g)
+                r = ""; for (i = 5; i <= NF; i++) r = r " " $i
+                if (g == S)      { print "guard " $2 " -> " S "/" cinit ":" r; next }
+                if ($2 == S)     { outguard[g] = r; next }   # re-attached below
+                print raw; next }
+            if (NF == 3 && $2 == "->") {
+                if ($3 == S) { print $1 " -> " S "/" cinit; next }
+                if ($1 == S) { next }                        # replaced by returns
+                print raw; next }
+            print raw
+        }
+        END {
+            for (t in cterm)
+                if (!(t in rterm)) { print "COMPILE-ERROR child terminal " t " of " S " has no return mapping" > "/dev/stderr"; bad = 1 }
+            for (t in rterm)
+                if (!(t in cterm)) { print "COMPILE-ERROR return " S " " t " names no terminal of the child machine" > "/dev/stderr"; bad = 1 }
+            for (t in rterm) {
+                print S "/" t " -> " rterm[t]
+                if (rterm[t] in outguard) print "guard " S "/" t " -> " rterm[t] ":" outguard[rterm[t]]
+            }
+            if (bad) exit 1
+        }
+    ' "$child" "$tmp/work.fsm" > "$tmp/next.fsm" || exit 1
+    mv "$tmp/next.fsm" "$tmp/work.fsm"
+done
+awk '$1 == "subprocess" { print "rfc-fsm-compile: subprocess nesting too deep" > "/dev/stderr"; exit 1 }' "$tmp/work.fsm" || exit 1
+cat "$tmp/work.fsm"
