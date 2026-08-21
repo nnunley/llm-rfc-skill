@@ -31,6 +31,9 @@ set -u
 
 SKILL_DIR="$(cd "$(dirname "$0")" && pwd)"
 FAILS=0
+# a block that could not be RUN is not a block that failed: conflating them
+# lets a broken harness satisfy a red declaration indefinitely
+HARNESS=0
 
 resolve_adapter() {
     local t="$1" series_dir="$2" IFS=':' d
@@ -197,6 +200,7 @@ for rfc in "$@"; do
     fi
 
     rfc_start_fails=$FAILS
+    rfc_start_harness=$HARNESS
     tangled=$(mktemp -d)
     "$SKILL_DIR/rfc-tangle" "$rfc" "$tangled" >/dev/null
     found=0
@@ -205,8 +209,8 @@ for rfc in "$@"; do
         found=1
         type="${t##*.}"
         if ! adapter=$(resolve_adapter "$type" "$series_adapters"); then
-            echo "FAIL $(basename "$t") — no adapter found for type $type"
-            FAILS=$((FAILS + 1))
+            echo "ERROR $(basename "$t") — no adapter found for type $type"
+            HARNESS=$((HARNESS + 1)); FAILS=$((FAILS + 1))
             continue
         fi
         if [ -n "$provider" ]; then
@@ -216,9 +220,13 @@ for rfc in "$@"; do
         fi
         if [ "$ok" = 0 ]; then
             echo "PASS $(basename "$t")"
-        else
+        elif [ "$ok" = 1 ]; then
             echo "FAIL $(basename "$t")"
             FAILS=$((FAILS + 1))
+        else
+            # exit >1 is the adapters' convention for "could not run at all"
+            echo "ERROR $(basename "$t") — harness could not run the block (exit $ok)"
+            HARNESS=$((HARNESS + 1)); FAILS=$((FAILS + 1))
         fi
     done
     [ "$found" = 1 ] || echo "rfc-run: no tangled evidence in $rfc"
@@ -231,8 +239,14 @@ for rfc in "$@"; do
         declared="${declared%% *}"
         declared="${declared:-green}"
         rfc_fails=$((FAILS - rfc_start_fails))
+        rfc_harness=$((HARNESS - rfc_start_harness))
+        rfc_conform=$((rfc_fails - rfc_harness))
         if [ "$declared" = red ]; then
-            if [ "$rfc_fails" -gt 0 ]; then
+            if [ "$rfc_harness" -gt 0 ]; then
+                # a declaration cannot absorb a harness that never ran: that is
+                # how a platform-wide outage hides inside an expected red
+                echo "EXPECT MISMATCH $rfc — declared red, but the harness could not run $rfc_harness block(s); a broken runner is not a red corpus"
+            elif [ "$rfc_conform" -gt 0 ]; then
                 echo "EXPECT ok $rfc — corpus red as declared"
                 FAILS=$rfc_start_fails
             else
