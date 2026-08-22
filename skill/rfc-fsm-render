@@ -14,27 +14,51 @@ case "$mode" in
 mermaid)
     # Mermaid state IDs reject characters like "-" that the fsm notation
     # allows (LAST-CALL). Sanitize IDs and declare display aliases.
+    # A compiled machine names sub-workflow states P/X; those are drawn as a
+    # composite state box labelled P, so an expanded subprocess reads as a
+    # bounded region instead of a prefix convention the reader must decode.
     echo "stateDiagram-v2"
     awk '
         function sid(name,   s) { s = name; gsub(/[^A-Za-z0-9_]/, "_", s); return s }
-        function note(name) { if (sid(name) != name && !(name in seen)) { seen[name] = 1; printf "    state \"%s\" as %s\n", name, sid(name) } }
+        function note(name) { if (sid(name) != name && !(name in seen)) { seen[name] = 1; alias[++na] = name } }
+        function reg(name,   i) { i = index(name, "/"); return (i ? substr(name, 1, i - 1) : "") }
         { sub(/[[:space:]]*;.*$/, "") }
         /^[[:space:]]*$/ { next }
-        $1 == "initial"  { note($2); init = sid($2); next }
-        $1 == "terminal" { for (i = 2; i <= NF; i++) { note($i); term[sid($i)] = 1 } next }
+        $1 == "initial"  { note($2); states[$2] = 1; init = sid($2); next }
+        $1 == "terminal" { for (i = 2; i <= NF; i++) { note($i); states[$i] = 1; term[sid($i)] = 1 } next }
         $1 == "note" {
             nname = $2; sub(/:$/, "", nname); note(nname)
             text = $0
-            sub(/^[[:space:]]*note[[:space:]]+[A-Za-z0-9_-]+:[[:space:]]*/, "", text)
+            sub(/^[[:space:]]*note[[:space:]]+[A-Za-z0-9_\/-]+:[[:space:]]*/, "", text)
             stnote[sid(nname)] = (sid(nname) in stnote) ? stnote[sid(nname)] "; " text : text
             next
         }
         $1 == "deadline" { note($2); dl[sid($2)] = $NF; next }
-        NF == 3 && $2 == "->" { note($1); note($3); edges[++n] = sid($1) " --> " sid($3); next }
+        NF == 3 && $2 == "->" {
+            note($1); note($3); states[$1] = 1; states[$3] = 1
+            ef[++n] = $1; et[n] = $3
+            next
+        }
         END {
             for (s in dl) stnote[s] = ((s in stnote) ? stnote[s] "; " : "") "on timeout -> " dl[s]
+            # a region is a declared state P that also prefixes states P/...
+            for (s in states) { p = reg(s); if (p != "" && (p in states)) { isreg[p] = 1; inreg[s] = p } }
+            nr = 0
+            for (i = 1; i <= n; i++) if ((ef[i] in isreg) && inreg[et[i]] == ef[i]) entry[ef[i]] = et[i]
+            for (i = 1; i <= na; i++) if (!(alias[i] in inreg)) printf "    state \"%s\" as %s\n", alias[i], sid(alias[i])
+            for (p in isreg) {
+                printf "    state %s {\n", sid(p)
+                for (i = 1; i <= na; i++) if (inreg[alias[i]] == p) printf "        state \"%s\" as %s\n", alias[i], sid(alias[i])
+                if (p in entry) printf "        [*] --> %s\n", sid(entry[p])
+                for (i = 1; i <= n; i++) if (inreg[ef[i]] == p && inreg[et[i]] == p) printf "        %s --> %s\n", sid(ef[i]), sid(et[i])
+                printf "    }\n"
+            }
             if (init != "") printf "    [*] --> %s\n", init
-            for (i = 1; i <= n; i++) printf "    %s\n", edges[i]
+            for (i = 1; i <= n; i++) {
+                if (inreg[ef[i]] == inreg[et[i]] && inreg[ef[i]] != "") continue   # drawn inside its box
+                if ((ef[i] in isreg) && entry[ef[i]] == et[i]) continue            # the descent: the box start
+                printf "    %s --> %s\n", sid(ef[i]), sid(et[i])
+            }
             for (t in term) printf "    %s --> [*]\n", t
             # Block notes only: mermaid lexes an inline "note X: text"
             # body as diagram source, so "->" or "--" in it (every deadline

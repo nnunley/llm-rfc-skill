@@ -468,6 +468,17 @@ lint_file() {
             infsm && /^```$/ { infsm = 0; next }
             infsm { print > (dir "/" n ".fsm") }
         ' "$f"
+        # the committed blocks, so a render can be compared to its source:
+        # holding the DERIVED output to the subset says nothing about the
+        # text actually published, and a hand-drawn diagram passes every
+        # check while showing a machine that does not exist
+        awk -v dir="$mtmp" '
+            /^```mermaid$/ { n++; inm = 1; next }
+            inm && /^```$/ { inm = 0; next }
+            inm { print > (dir "/" n ".committed") }
+        ' "$f"
+        local ncommitted
+        ncommitted=$(find "$mtmp" -name '*.committed' | wc -l | tr -d ' ')
         for mf in "$mtmp"/*.fsm; do
             [[ -e "$mf" ]] || continue
             midx=$((midx + 1))
@@ -475,6 +486,11 @@ lint_file() {
             if ! derived=$("$LINT_DIR/rfc-fsm-render" "$mf" mermaid 2>&1); then
                 mermaid_problems+="block $midx: rfc-fsm-render failed: $derived"$'\n'
                 continue
+            fi
+            if [[ "$ncommitted" -eq "$nfsm" && -f "$mtmp/$midx.committed" ]]; then
+                if ! printf '%s\n' "$derived" | diff -q - "$mtmp/$midx.committed" >/dev/null 2>&1; then
+                    mermaid_problems+="block $midx: does not match its derived render — renders are derived artifacts, re-derive with rfc-fsm-render rather than editing"$'\n'
+                fi
             fi
             mermaid_problems+=$(printf '%s\n' "$derived" | awk -v blk="$midx" '
                 NR == 1 {

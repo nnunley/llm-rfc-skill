@@ -119,6 +119,27 @@ stateDiagram-v2
     SIMPLIFY --> DESIGN_DONE
     DESIGN_ABANDON --> [*]
     DESIGN_DONE --> [*]
+    note right of DESIGN_ABANDON
+        the deck will not close because a fact is missing, not because the design is hard — return to the parent with the question for a spike
+    end note
+    note right of DESIGN_START
+        design only what THIS story needs
+    end note
+    note right of METAPHOR
+        name the analogy the whole system is described in, and the terms it contributes
+    end note
+    note right of WALKTHROUGH
+        drive ONE concrete scenario through the deck card by card, out loud
+    end note
+    note right of DESIGN_DONE
+        the deck is checked, walked, and simplified
+    end note
+    note right of SIMPLIFY
+        apply the four rules in order — passes the tests, reveals intention, no duplication, fewest elements
+    end note
+    note right of DECK
+        write the cards — name, at most three responsibilities in the problem language, collaborators
+    end note
 ```
 
 ### The deck is a checked artifact
