@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # env-scrub — built-in sandbox provider: the hygiene floor, generalized
 # from the transcript adapter's inline sandbox. Fresh temporary HOME and
-# XDG_CONFIG_HOME, GIT_CONFIG_NOSYSTEM=1; working directory and PATH are
+# XDG base directories, GIT_CONFIG_NOSYSTEM=1; working directory and PATH are
 # the caller's. Hygiene, NOT a security boundary.
 # Contract (draft-ndn-sandbox-providers-00): env-scrub [flags] -- cmd...
 set -u
@@ -13,7 +13,7 @@ shift
 
 scratch=$(mktemp -d)
 RFC_SANDBOX_ACTIVE=env-scrub \
-  HOME="$scratch" XDG_CONFIG_HOME="$scratch/.config" GIT_CONFIG_NOSYSTEM=1 "$@"
+  HOME="$scratch" XDG_CONFIG_HOME="$scratch/.config" XDG_DATA_HOME="$scratch/.local/share" XDG_STATE_HOME="$scratch/.local/state" XDG_CACHE_HOME="$scratch/.cache" GIT_CONFIG_NOSYSTEM=1 "$@"
 rc=$?
 rm -rf "$scratch"
 exit $rc

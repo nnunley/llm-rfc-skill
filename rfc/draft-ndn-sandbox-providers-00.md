@@ -158,7 +158,9 @@ rfc-run: no sandbox provider found for missing
 ### The built-in `env-scrub` provider
 
 The tooling MUST ship a built-in `env-scrub` provider: a fresh temporary
-HOME and XDG_CONFIG_HOME, `GIT_CONFIG_NOSYSTEM=1`, inner command executed
+HOME and a fresh temporary value for every XDG base directory
+(`XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CACHE_HOME`),
+`GIT_CONFIG_NOSYSTEM=1`, inner command executed
 with the caller's working directory and PATH intact, temporary state
 removed afterward. It is the hygiene floor generalized from the
 transcript adapter's inline sandbox — and like it, hygiene, not a
@@ -166,7 +168,7 @@ security boundary. [R-env-scrub]
 
 ```transcript @R-env-scrub
 $ mkdir -p adapters
-$ printf '#!/bin/sh\n[ "$HOME" != "%s" ] && [ "$GIT_CONFIG_NOSYSTEM" = 1 ]\n' "$HOME" > adapters/probe
+$ printf '#!/bin/sh\n[ "$HOME" != "%s" ] && [ "$XDG_DATA_HOME" != "%s" ] && [ "$GIT_CONFIG_NOSYSTEM" = 1 ]\n' "$HOME" "$XDG_DATA_HOME" > adapters/probe
 $ chmod +x adapters/probe
 $ printf 'x\n' > sample.probe
 $ rfc-run --adapter-dir adapters --sandbox env-scrub --type probe sample.probe
@@ -264,6 +266,14 @@ choice.
   provider here. https://agent-safehouse.dev
 
 ## Changelog
+- 2026-08-25: `env-scrub` scrubs every XDG base directory, not
+  `XDG_CONFIG_HOME` alone; the witness now proves `XDG_DATA_HOME` is
+  replaced too. Redirecting `HOME` does not contain a subject that follows
+  the XDG spec, because those variables are read before the `HOME`
+  fallback — a real corpus run wrote into the runner's own
+  `~/.local/share`. Edited from the ndn track under
+  `sandbox-xdg-data-home`: changing the provider would otherwise have left
+  this paragraph describing behaviour the code no longer has.
 
 - 2026-08-14: draft-00 created from the design conversation: configurable
   sandbox providers on spacedock's detect/gate/wrap seam, selected by

@@ -55,10 +55,17 @@ when, and only when, they appear in all capitals, as shown here.
 Each transcript block in this document is an independent conformance test
 executed under replay-and-diff. The runner provides, per block, a fresh
 sandbox: an empty directory whose logical path is exactly `/tmp/gi-rfc`
-(the shell's working directory at block start), `HOME` and `XDG_CONFIG_HOME`
-redirected inside the sandbox (empty global git config, no host excludes),
-system git config neutralized (`GIT_CONFIG_NOSYSTEM=1`), a configured git
-identity, and no inter-block state. Blocks construct every piece of state
+(the shell's working directory at block start), `HOME` and every XDG base
+directory — `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME`,
+`XDG_CACHE_HOME` — redirected inside the sandbox (empty global git config,
+no host excludes), system git config neutralized (`GIT_CONFIG_NOSYSTEM=1`),
+a configured git identity, and no inter-block state. [R-sandbox-env]
+Redirecting `HOME` alone does not contain a subject that follows the XDG
+Base Directory specification: those variables are consulted BEFORE the
+`HOME` fallback, so a subject writing to `XDG_DATA_HOME` writes to the
+runner's own home no matter what `HOME` says. A sandbox that leaks by
+default is worse than none, because the leak is silent and the evidence
+still reports green. Blocks construct every piece of state
 they reference — no block depends on another block, on this repository, or
 on the author's machine.
 
@@ -89,6 +96,18 @@ document. One notation limit is normative: an expected-output line
 beginning `$ ` or `> ` cannot be expressed literally (it reads as a
 command or a continuation) — such output is asserted through a
 projection instead.
+
+```transcript @R-sandbox-env
+$ mkdir -p "$XDG_DATA_HOME" "$XDG_STATE_HOME" "$XDG_CACHE_HOME" "$XDG_CONFIG_HOME"
+$ printf contained > "$XDG_DATA_HOME/probe"
+$ cat /tmp/gi-rfc/.local/share/probe
+contained
+$ find /tmp/gi-rfc -name probe | wc -l | tr -d ' '
+1
+$ test "$XDG_CONFIG_HOME" = /tmp/gi-rfc/.config
+$ test "$XDG_STATE_HOME" = /tmp/gi-rfc/.local/state
+$ test "$XDG_CACHE_HOME" = /tmp/gi-rfc/.cache
+```
 
 ### Document identity
 
@@ -900,3 +919,10 @@ constrained is excluded from judging its own conformance.
   as the defect rather than the platform. The witness nests one
   execution inside another, and fails against the pre-fix shared-sandbox
   implementation, so it is falsifiable rather than tautological.
+- 2026-08-25: the sandbox now redirects every XDG base directory, not
+  `XDG_CONFIG_HOME` alone [R-sandbox-env]. Found by replaying a transcript
+  that ran a subject using the XDG data directory: it created a real store
+  in the runner's own `~/.local/share`, because XDG variables are consulted
+  before the `HOME` fallback and only the config one was redirected. The
+  evidence contract had been asserting hermetic execution it did not
+  deliver, silently, in every corpus in the series.

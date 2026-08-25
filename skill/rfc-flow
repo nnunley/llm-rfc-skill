@@ -66,7 +66,7 @@ BEGIN {
     print "set -u"
     print "fail() { echo \"flow: line $1: $2\"; exit 1; }"
     if (envrepo) {
-        print "export GIT_CONFIG_NOSYSTEM=1 HOME=\"$PWD\" XDG_CONFIG_HOME=\"$PWD/.config\""
+        print "export GIT_CONFIG_NOSYSTEM=1 HOME=\"$PWD\" XDG_CONFIG_HOME=\"$PWD/.config\" XDG_DATA_HOME=\"$PWD/.local/share\" XDG_STATE_HOME=\"$PWD/.local/state\" XDG_CACHE_HOME=\"$PWD/.cache\""
         print "git init -q . && git config user.name rfc-flow && git config user.email rfc-flow@rfc"
         print "git commit -q --allow-empty -m seed"
     }
