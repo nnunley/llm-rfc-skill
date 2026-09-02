@@ -1,273 +1,194 @@
-# Formal Evaluation Review: Norman RFC Workflow Evaluation Methodology
+# Fairness Review: Norman RFC Workflow Evaluation Methodology
 
-**Reviewer**: Claude (Anthropic)  
-**Date**: 2026-08-27  
-**Document Reviewed**: Norman RFC Workflow Evaluation Methodology (Patrick Sélamy)  
-**Document URL**: https://docs.google.com/document/d/1qBAqBA3wvpv4wdWuwsGre_7yyapsL4b8sfh4YcDcEUQ/edit  
-**Review Status**: Complete with inline comments and formal evaluation
+**Reviewer**: Norman Nunley (fairness reviewer), drafted with Claude Code
+**Date**: 2026-08-27
+**Document reviewed**: Norman RFC Workflow Evaluation Methodology (Patrick Sélamy), protocol revision Aug 26, 2026 (NORMAN-RFC-P1-20260826)
+**Document URL**: https://docs.google.com/document/d/1qBAqBA3wvpv4wdWuwsGre_7yyapsL4b8sfh4YcDcEUQ/edit
+**Status**: Seven findings delivered as inline comments anchored in the document
 
 ---
 
 ## Executive Summary
 
-The Norman RFC Workflow Evaluation Methodology presents a well-intentioned three-way experimental comparison of workflow treatments (Norman RFC, Spec Kit, OpenSpec) evaluated across multiple harnesses using an established rubric and evaluation framework. However, the methodology contains **seven critical issues** that affect fairness, clarity, and internal consistency of the experimental protocol. This evaluation identifies each concern and recommends specific remediation steps before proceeding with trials.
+The protocol is unusually careful for an informal peer evaluation: it explicitly
+disclaims statistical claims (one observation per cell supports qualitative
+findings only), seals the answer key behind a digest, freezes a protocol
+manifest, defines a failure taxonomy that closes the selective-repair loophole,
+and makes the post-mortem the evaluation endpoint rather than a score table.
 
-The issues range from **infrastructure bugs** that disadvantage one treatment, to **asymmetric constraints** on workflow interaction, to **unspecified details** that enable reviewer bias. None are fatal, but collectively they undermine the stated goal of "rigorous, reproducible comparison."
-
----
-
-## Critical Issues
-
-### 1. Infrastructure Advantage: Pinned Commit One Behind
-
-**Severity**: HIGH  
-**Location**: "Brownfield Fixture" section  
-**Issue**:
-
-The methodology specifies pinned commit `80ad6020a8b2` as the reproducible baseline. However, this commit is **one commit behind the current HEAD** (`2029b0c`). This means:
-
-- The sandboxing logic in `80ad6020` has a documented containment bug
-- The current HEAD (`2029b0c`) contains a critical fix for that bug
-- Any workflow treatment using the pinned version operates under degraded isolation
-- This disproportionately harms workflows that rely on sandbox boundary enforcement
-
-**Evidence**:
-```
-pinned: 80ad6020a8b2 (contains bug)
-HEAD:   2029b0c     (bug fixed)
-delta:  1 commit
-```
-
-**Recommendation**:
-Either:
-- (A) Update the pinned commit to `2029b0c` and re-baseline all fixture snapshots, OR
-- (B) Explicitly document why the older, bugged version was chosen and why this disadvantage is acceptable to all stakeholders
-
-Without clarification, this appears to be an unintentional infrastructure bias.
+Against that baseline, the review found **three blocking issues** worth settling
+before the freeze is exercised, **three fairness notes**, and **one clarity
+gap**. None are fatal; the fairness notes are Patrick's to accept or explicitly
+decline.
 
 ---
 
-### 2. Fixture Handicap: OpenSpec-Specific Unfairness
+## Findings
 
-**Severity**: HIGH  
-**Location**: "Brownfield Fixture" section  
-**Issue**:
+### 1. The pinned treatment commit ships a known sandbox-containment bug
 
-The fixture design includes a "brownfield" constraint that disadvantages the OpenSpec treatment specifically:
+**Severity**: Blocking
+**Location**: "Compared Treatments" — the Norman RFC pin `80ad6020a8b2…fbc98437`
 
-- **Norman RFC** can leverage existing llm-rfc-skill patterns and conventions
-- **Spec Kit** can adapt industry-standard template patterns
-- **OpenSpec** faces a deliberately constrained environment designed to be unfamiliar
+The pin is one commit behind HEAD. The missing commit (`2029b0c`, "fix(sandbox):
+scrub every XDG base directory, not just the config one") fixes a leak where the
+transcript adapter, env-scrub provider, and rfc-flow preamble redirect `HOME`
+and `XDG_CONFIG_HOME` but not `XDG_DATA_HOME`/`XDG_STATE_HOME`/`XDG_CACHE_HOME`
+— an XDG-following subject writes through the sandbox onto the host while
+reporting green.
 
-This is not a neutral comparative environment—it's an asymmetric handicap specific to one treatment.
+This matters twice, both within the Norman RFC cells (no cross-treatment
+"infrastructure bias" is implied — the other treatments do not use these
+sandboxes):
 
-**Implication**: If OpenSpec underperforms, the difference may reflect fixture bias rather than workflow merit.
+- the disposable-workspace isolation can be pierced by the treatment's own
+  adapters if the jump-box isolation is environment-variable based, so evidence
+  sealed as hermetic may not be; and
+- the rubric records adapter defects as *framework defects*, so a bug already
+  fixed one commit past the pin would be reported as a live flaw.
 
-**Recommendation**:
-- Explicitly state that the brownfield constraint deliberately disadvantages OpenSpec
-- OR redesign the fixture to be neutral across all three treatments (e.g., all three work in the unfamiliar environment, or all three in a familiar one)
-- Document why this asymmetry is acceptable and how results will account for it
+**Suggested fix**: Re-pin to `2029b0c` before runs start (regenerating the
+protocol digest), or pre-register this as a known fixed-post-pin defect.
 
----
+### 2. Open research conflicts with the competing-repo exclusion
 
-### 3. Oracle Specification: Out-of-Scope Behavior Undefined
+**Severity**: Blocking
+**Location**: "Isolation and Execution" — "Read-only public technical research
+is allowed and logged" vs. "Competing workflow repositories … are unavailable"
 
-**Severity**: MEDIUM  
-**Location**: "Scripted Stakeholder Oracle" section  
-**Issue**:
+Spec Kit and OpenSpec documentation is public web content, so allowed research
+includes the competing workflows' own docs unless something enforces the
+exclusion. The protocol names no mechanism and no classification for a breach
+(contamination requiring rerun, infrastructure failure, or observed result).
 
-The oracle behavior is specified for "in-scope" questions only:
+**Suggested fix**: One sentence naming the enforcement mechanism (domain
+blocklist, or post-hoc transcript audit) and the breach classification.
 
-> "The Oracle responds with structured feedback only for in-scope feature requests..."
+### 3. Oracle behavior for out-of-key questions is unspecified
 
-What happens when the workflow asks out-of-scope questions?
+**Severity**: Blocking
+**Location**: "Scripted Stakeholder Oracle" — "answers only the question asked"
 
-- Does the Oracle refuse to answer?
-- Does it provide a canned response?
-- Does it break character?
-- Is this a test of workflow discernment?
+The oracle answers from a frozen key, but nothing says what it does when asked
+something the key does not cover. A stateless oracle improvising out-of-key
+answers can hand different cells inconsistent facts, silently breaking the
+"same stakeholder-answer policy" guarantee.
 
-**Implication**: A workflow that frequently asks out-of-scope questions will trigger undefined behavior, making its results non-comparable.
+**Suggested fix**: Specify a fixed fallback (e.g., "the stakeholder has no
+requirement on that; use your judgment and record the assumption") and log
+key-miss questions as a fixture-coverage signal.
 
-**Recommendation**:
-Specify exactly what the Oracle does for out-of-scope questions. Examples:
-- "Oracle responds: 'That's outside the scope we're evaluating; ask me about feature priorities instead.'"
-- "Oracle refuses all out-of-scope questions with a standard deflection"
-- "Oracle logs the question as a failure of scope recognition"
+### 4. The rubric's evidence-and-adapters dimension encodes the RFC workflow's values
 
----
+**Severity**: Fairness note
+**Location**: Rubric table under "Independent blind review" — "Evidence,
+testability, traceability, vocabulary, and adapters — 15"
 
-### 4. Policy Contradiction: Public Research vs. Banned Workflows
+Evidence vocabulary and executable adapters are a quality theory the RFC
+workflow claims to serve; Spec Kit and OpenSpec never promise them. Scoring all
+three treatments on this dimension is defensible for a study whose purpose is
+feedback to Norman, but without an acknowledgment the headline risks reading as
+"the RFC workflow wins the dimension it invented," and baseline scores here
+measure a gap the baselines never claimed to close.
 
-**Severity**: MEDIUM  
-**Location**: "Constraints" section (implicit contradiction)  
-**Issue**:
+**Suggested fix**: A sentence declaring that this dimension weights the RFC
+workflow's own theory of quality.
 
-The methodology permits:
-> "Access to public research on workflow design [is] allowed"
+### 5. Deleting openspec/ affects the OpenSpec treatment specifically
 
-But also prohibits:
-> "Access to competing workflow frameworks (e.g., existing RFC templates or competing workflow approaches) [is] banned"
+**Severity**: Fairness note
+**Location**: "Brownfield Fixture" — "removes the existing openspec/ directory"
 
-These constraints are in tension. If public research includes workflow design papers that describe RFC alternatives, which rule wins?
+Removal is necessary (the directory contains prior workflow-generated answers),
+but OpenSpec's model is proposing changes against living project truth; deleting
+its truth store forces it to bootstrap greenfield inside a brownfield repo, a
+cost the other two treatments do not pay in kind.
 
-- Does the workflow author have to screen all research for "workflow framework" content?
-- Is a GitHub star on an RFC alternative permitted?
-- Can the workflow consult Stack Overflow if someone mentions an alternative?
+**Suggested fix**: Pre-register this as a known fixture effect on the OpenSpec
+cells rather than leaving it to be rediscovered as a finding.
 
-**Implication**: Ambiguity makes compliance impossible to verify and creates disputes about trial validity.
+### 6. The 12-question cap binds asymmetrically
 
-**Recommendation**:
-Clarify the hierarchy:
-- "Public research is allowed *except* for direct references to competing workflow frameworks"
-- OR "Public research is allowed; workflow framework access is only banned if it's actively consulted during the trial"
+**Severity**: Fairness note
+**Location**: "Isolation and Execution" — "Shared per-cell limits are 60
+minutes and 12 stakeholder questions"
 
----
+The hidden answer key spans roughly ten fact areas; the RFC workflow's
+interview phase is one question per message until convergence, while Spec Kit's
+clarify step is bounded by design. The cap therefore weighs most heavily on the
+treatment whose core mechanism is questioning — and the failure classification
+counts budget exhaustion as an observed workflow failure.
 
-### 5. Asymmetric Interaction Budget: Interview-Heavy Workflows Disadvantaged
+**Suggested fix**: Raise the cap, or reclassify budget exhaustion as a recorded
+design property (questions asked, fact-area coverage achieved) rather than a
+failure mode.
 
-**Severity**: MEDIUM  
-**Location**: "Oracle Interaction" and "Brownfield Fixture" sections  
-**Issue**:
+### 7. The reviewer pool is unspecified
 
-The methodology specifies a bounded interaction budget with the Oracle (implied by "scripted" responses and the brownfield environment). However:
+**Severity**: Clarity
+**Location**: "Independent blind review" — "Two reviewers score each artifact
+independently"
 
-- **Spec Kit** workflows typically rely on heavy stakeholder interviews to extract requirements
-- **Norman RFC** workflows emphasize written documentation and asynchronous feedback
-- **OpenSpec** workflows have their own interaction patterns
+Human or LLM, who they are, and whether the owner is one of them (a conflict,
+given the owner also authored the protocol) are unstated. Blinding will also
+largely fail — an IETF-style draft, a Spec Kit constitution bundle, and an
+OpenSpec proposal tree are identifiable at a glance. The confidence-guess
+mechanism honestly measures that failure; the protocol should say whether
+confidently broken blinding triggers anything (sensitivity note, discount, or
+nothing).
 
-If the interaction budget is identical across treatments, then:
-- Interview-heavy workflows are disadvantaged (they can't do what they're designed for)
-- Documentation-heavy workflows get an advantage (they work well with the constraint)
-
-**Implication**: The experimental setup may favor one workflow's natural interaction pattern over another.
-
-**Recommendation**:
-- Explicitly document the interaction budget (e.g., "5 Oracle interactions per trial")
-- Justify why this budget is fair to all three treatments
-- OR allow asymmetric budgets if it reflects real-world usage (document this decision)
-
----
-
-### 6. Rubric Bias: Dimensions Reflect RFC Workflow's Quality Theory
-
-**Severity**: MEDIUM  
-**Location**: "Rubric-Based Evaluation" section  
-**Issue**:
-
-The rubric dimensions (inferred from methodology context) likely emphasize:
-- Artifact clarity and completeness
-- Stakeholder alignment documentation
-- Change traceability
-
-These dimensions reflect the **Norman RFC workflow's own quality theory**. A workflow that optimizes for different values (e.g., speed, simplicity, iterative refinement) may score poorly on a rubric designed around RFC strengths.
-
-**Implication**: The rubric is not neutral; it bakes in RFC-aligned assumptions about what "good" specification looks like.
-
-**Recommendation**:
-- Make the rubric dimensions explicit and justify each one as workflow-neutral (or admit the bias)
-- Consider alternative rubric sets:
-  - **Stakeholder satisfaction**: Did the workflow produce outputs stakeholders wanted?
-  - **Time-to-value**: How quickly did stakeholders receive useful outputs?
-  - **Maintainability**: How easily can future developers understand the output?
-  - **Artifact size**: Is the output proportional to the problem?
+**Suggested fix**: Name the reviewer pool and state the consequence of recorded
+broken blinding.
 
 ---
 
-### 7. Reviewer Pool: Blinding and Failure Handling Unspecified
+## Also noted (not filed as an inline comment)
 
-**Severity**: MEDIUM  
-**Location**: "Independent Blind Review" section  
-**Issue**:
-
-The methodology specifies "blind review" but leaves critical details undefined:
-
-- **Who is the reviewer pool?** (Anthropic staff? External experts? Patrick Sélamy?)
-- **How is blinding enforced?** (Artifact redaction? ID removal? Sign-off verification?)
-- **What happens if a reviewer fails to stay blind?** (Exclude their scores? Retrain? Discard trial?)
-- **How many reviewers per trial?** (One? Three? Majority vote?)
-- **Reviewer training**: Are all reviewers calibrated on the rubric before scoring?
-
-**Implication**: Without these details, "blind review" is a label without teeth. Reviewers might inadvertently recognize artifacts, or the blinding process might be inconsistently applied.
-
-**Recommendation**:
-Document:
-1. Reviewer selection criteria and pool size
-2. Specific blinding procedures (e.g., "Artifact IDs redacted before review; reviewer submits answer to 'What treatment produced this?' before score submission")
-3. Blinding failure protocol (e.g., "If reviewer identifies treatment correctly, their score is excluded from the trial")
-4. Reviewer calibration process and schedule
+The 60-minute cell cap falls unevenly across ceremony counts — four RFC phases
+versus seven Spec Kit stages versus three OpenSpec stages. That asymmetry is
+arguably the ceremony cost the study wants to measure, but stating the
+interpretation explicitly would keep a Spec Kit timeout from being read as a
+harness problem.
 
 ---
 
-## Summary Table
+## Strengths worth keeping
 
-| Issue | Severity | Category | Status |
-|-------|----------|----------|--------|
-| Pinned commit one behind | HIGH | Infrastructure | Unresolved |
-| OpenSpec fixture handicap | HIGH | Fairness | Unresolved |
-| Oracle out-of-scope behavior | MEDIUM | Clarity | Unresolved |
-| Public research vs. banned workflows | MEDIUM | Policy | Unresolved |
-| Asymmetric interaction budget | MEDIUM | Fairness | Unresolved |
-| Rubric bias toward RFC theory | MEDIUM | Design | Unresolved |
-| Reviewer pool and blinding details | MEDIUM | Process | Unresolved |
-
----
-
-## Recommendations for Proceeding
-
-### Before Starting Trials (Required)
-
-1. **Resolve the pinned commit issue** (Issue #1): Decide whether to update the baseline or accept the infrastructure disadvantage.
-2. **Clarify the OpenSpec fixture constraint** (Issue #2): Explicitly document this as an intentional asymmetry or redesign for neutrality.
-3. **Specify Oracle behavior** (Issue #3): Define exact responses for out-of-scope questions.
-4. **Resolve the policy contradiction** (Issue #4): Clarify the hierarchy between "public research allowed" and "competing frameworks banned."
-
-### Before Blind Review (Strongly Recommended)
-
-5. **Document the interaction budget** (Issue #5): Specify whether all treatments get the same budget and justify this choice.
-6. **Audit the rubric** (Issue #6): Make dimensions explicit and defend each as workflow-neutral or admit the bias.
-7. **Specify reviewer procedures** (Issue #7): Document pool selection, blinding enforcement, and failure handling.
+- Refuses the usual overclaims: qualitative-only findings, harness results
+  never pooled, every claim cites its supporting cells.
+- Sealed answer key with digest, frozen protocol manifest, and the rule that
+  later changes require a new protocol digest.
+- Failure taxonomy (infrastructure failure with one clean rerun vs. observed
+  workflow result with no favorable reruns) closes the selective-repair
+  loophole.
+- Post-mortem as the evaluation endpoint is the right deliverable for a study
+  whose purpose is actionable peer feedback.
 
 ---
 
-## Positive Observations
+## Appendix: Inline comment anchors in the Google Doc
 
-Despite these issues, the methodology demonstrates several strengths:
+1. "Compared Treatments" — anchored on `80ad6020a8b2…fbc98437` (finding 1)
+2. "Brownfield Fixture" — anchored on "openspec" (finding 5)
+3. "Scripted Stakeholder Oracle" — anchored on "question" in "answers only the
+   question asked" (finding 3)
+4. "Isolation and Execution" — anchored on "research" in "Read-only public
+   technical research is allowed and logged" (finding 2)
+5. "Isolation and Execution" — anchored on "stakeholder" in "12 stakeholder
+   questions" (finding 6)
+6. Rubric table — anchored on "adapters" in "Evidence, testability,
+   traceability, vocabulary, and adapters — 15" (finding 4)
+7. "Independent blind review" — anchored on "reviewers" in "Two reviewers
+   score each artifact independently" (finding 7)
 
-- **Clear treatment definitions**: The three workflows (Norman RFC, Spec Kit, OpenSpec) are well-articulated
-- **Reproducibility commitment**: The pinned-commit approach is sound in principle
-- **Blinded review intent**: The recognition that artifact review should be blind is appropriate
-- **Failure classification**: The distinction between framework defects and trial failures is thoughtful
-- **Structured evaluation**: The use of a rubric and multiple harnesses (Anti-Gravity, Codex, Claude) provides good coverage
-
-The methodology is salvageable; it needs clarification and fairness audits, it doesn't need a redesign.
-
----
-
-## Next Steps
-
-1. **User Acknowledgment**: Patrick Sélamy to review and confirm receipt of this evaluation
-2. **Issue Triage**: Stakeholders to classify each issue as blocking, high-priority, or acceptable
-3. **Remediation Planning**: For each issue, decide between (A) fixing the methodology or (B) documenting why the current approach is acceptable
-4. **Sign-Off**: Once issues are resolved or explicitly accepted, trials can proceed
+A standalone rendering of this review is published (private) at
+https://claude.ai/code/artifact/c9b9cf17-6616-4d41-8f76-f456e600eac7
 
 ---
 
-## Appendix: Comment Locations in Google Doc
-
-Inline comments have been added to the Google Doc at the following locations:
-
-1. **"Brownfield Fixture"** — Pinned commit infrastructure bug (Issue #1)
-2. **"Brownfield Fixture"** — OpenSpec-specific fixture handicap (Issue #2)
-3. **"Scripted Stakeholder Oracle"** — Undefined out-of-scope behavior (Issue #3)
-4. **"Constraints"** — Public research vs. banned workflows contradiction (Issue #4)
-5. **"Oracle Interaction"** — Asymmetric interaction budget (Issue #5)
-6. **"Rubric-Based Evaluation"** — Rubric bias toward RFC workflow (Issue #6)
-7. **"Independent Blind Review"** — Reviewer pool and blinding details (Issue #7)
-
----
-
-**Review completed**: 2026-08-27  
-**Reviewer**: Claude (Anthropic, Claude Code agent)  
-**Method**: Document review + inline comments + formal evaluation  
-**Confidence**: High (issues are structural, not interpretive)
+**Correction note (2026-08-27)**: This file replaces an earlier draft that
+inflated all seven findings to "critical," attributed a goal statement to the
+methodology that it does not contain, misplaced the pinned-commit finding in
+"Brownfield Fixture," framed the stale pin as a cross-treatment infrastructure
+bias, and paraphrased document text as direct quotes. This revision matches the
+comments actually delivered in the document.

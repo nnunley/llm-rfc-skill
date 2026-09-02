@@ -50,6 +50,43 @@ when, and only when, they appear in all capitals, as shown here.
 
 ## Specification
 
+### Scope and principles
+
+This document defines the RFC process for a series: document identity
+and naming, the masthead, the status machine and lifecycle, the
+mandatory structure, formal language and the evidence types,
+embedded-evidence pairing and the conformance corpus, invocation
+isolation, commit discipline, and the authoring practice around them.
+It does NOT define how evidence is executed beyond the transcript and
+fsm bootstraps (draft-ndn-evidence-adapters-00), how execution is
+isolated (draft-ndn-sandbox-providers-00), how review dispositions
+travel (draft-ndn-feedback-registration-00), or how RFCs cross
+repositories (draft-ndn-cross-repo-00) — each adopted by reference where
+named below — nor how a Specification's body is shaped for an
+implementing agent (draft-claude-nlspec-conventions-00, a candidate
+practice). The diagnostics `rfc-lint` emits, each with its recovery,
+are catalogued in Appendix A.
+
+**Dual verifiability.** Every conformance artifact is checkable by a
+person at a glance AND by a deterministic tool. LLM agents author
+artifacts; they never sit in the verification loop.
+
+**Durable identity.** A document's name, its number once published, and
+its requirement markers are permanent; obligations accumulate across
+contexts, authors, and years instead of resetting.
+
+**Registered consent.** Consent is recorded per reviewer, never
+inferred; silence carries meaning only inside a declared LAST-CALL
+window.
+
+**Declared state.** A draft's corpus state is declared, and the
+declaration is verified against reality in both directions; nothing is
+red or green by surprise.
+
+**Isolation without sharing.** Every invocation owns its own physical
+state behind any logical path a document names; contention that can be
+removed is removed, never serialised.
+
 ### Evidence conventions
 
 Each transcript block in this document is an independent conformance test
@@ -97,6 +134,13 @@ beginning `$ ` or `> ` cannot be expressed literally (it reads as a
 command or a continuation) — such output is asserted through a
 projection instead.
 
+| Line form | Meaning |
+|---|---|
+| `$ cmd` | A command; shell state persists to the next command in the block |
+| `> text` | PS2 continuation of the preceding command; the newline is preserved and the command runs at the first non-continuation line |
+| `? N` | The immediately preceding command exited with status N |
+| any other line | Expected output, compared byte-exactly; absent a `? N` line, the preceding command's status is asserted 0 |
+
 ```transcript @R-sandbox-env
 $ mkdir -p "$XDG_DATA_HOME" "$XDG_STATE_HOME" "$XDG_CACHE_HOME" "$XDG_CONFIG_HOME"
 $ printf contained > "$XDG_DATA_HOME/probe"
@@ -108,6 +152,20 @@ $ test "$XDG_CONFIG_HOME" = /tmp/gi-rfc/.config
 $ test "$XDG_STATE_HOME" = /tmp/gi-rfc/.local/state
 $ test "$XDG_CACHE_HOME" = /tmp/gi-rfc/.cache
 ```
+
+<!-- evidence: @R-sandbox-env -->
+| Provision | Value | Note |
+|---|---|---|
+| working directory | `/tmp/gi-rfc` (logical) | Fresh and empty per block; a private physical location per invocation |
+| `HOME` | `/tmp/gi-rfc` | Empty global git config; no host excludes |
+| `XDG_CONFIG_HOME` | `/tmp/gi-rfc/.config` | XDG-aware subjects consult these BEFORE the `HOME` fallback |
+| `XDG_DATA_HOME` | `/tmp/gi-rfc/.local/share` | |
+| `XDG_STATE_HOME` | `/tmp/gi-rfc/.local/state` | |
+| `XDG_CACHE_HOME` | `/tmp/gi-rfc/.cache` | |
+| `GIT_CONFIG_NOSYSTEM` | `1` | System git config neutralized |
+| git identity | configured | Commits succeed with no host identity |
+| `PATH` | the skill's tools prepended | `rfc-lint`, `rfc-run`, `rfc-tangle`, … available to every corpus |
+| inter-block state | none | Every block constructs what it references |
 
 ### Document identity
 
@@ -167,6 +225,46 @@ $ rfc-lint 0001-x.md 2>&1 | grep -c "numbered RFCs are published by definition"
 1
 $ printf '# draft-a-y-00: Y\n**Status:** PUBLISHED\n' > draft-a-y-00.md
 $ rfc-lint draft-a-y-00.md 2>&1 | grep -c "publishing assigns the number"
+1
+```
+
+<!-- evidence: @R-status-vocab -->
+| Status | Form | Meaning |
+|---|---|---|
+| `DRAFT` | draft | Revised in place; every change logged; corpus red only by declaration |
+| `LAST-CALL` | draft | Consensus table and deadline mandatory; a recorded concern blocks; expiry publishes by default |
+| `POSTPONED` | draft | Parked; resumes to DRAFT or ends WITHDRAWN; never publishes directly |
+| `WITHDRAWN` | draft | Dead; terminal |
+| `PUBLISHED` | numbered | Frozen; number assigned; corpus-green invariant |
+| `SUPERSEDED` | numbered (draft solely as the cross-repo forwarding pointer) | `Superseded-By:` names the successor; evidence retired |
+| `HISTORIC` | numbered | Retired without successor; terminal |
+
+### Masthead
+
+The `**Name:** value` lines after the title are the document's
+machine-read surface. The table is exhaustive for what `rfc-lint`
+reads; an absent elective header takes its default, and a header whose
+value lies outside its set is a lint error. [R-masthead]
+
+| Header | Values | Default | Meaning |
+|---|---|---|---|
+| `Status` | the seven statuses above | none (mandatory) | Lifecycle state; selects every status-dependent check |
+| `Category` | `Standards-Track`, `Informational`, `Experimental`, `BCP` | none | RFC 2026 category; informs review, gates nothing |
+| `Corpus` | `green`, `red`, with a parenthetical note allowed | `green` | Declared replay result; `rfc-run --expect` verifies it both ways |
+| `Obsoletes` | `NNNN`, or `owner/repo#NNNN [@ sha]` | none | Full replacement of a published RFC |
+| `Updates` | `NNNN`, or `owner/repo#NNNN [@ sha]` | none | Partial amendment; only the named requirement IDs are replaced |
+| `Superseded-By` | `NNNN`, or `owner/repo#NNNN` | none | Set on the old RFC when its successor publishes; mandatory in SUPERSEDED |
+| `Authors`, `Date` | free text | none | Attribution and creation date; not lint-read |
+
+```transcript @R-masthead
+$ printf '# draft-a-x-00: X\n**Status:** DRAFT\n**Category:** Draft\n' > draft-a-x-00.md
+$ rfc-lint draft-a-x-00.md 2>&1 | grep -c "invalid category"
+1
+$ printf '# draft-a-y-00: Y\n**Status:** DRAFT\n**Corpus:** blue\n' > draft-a-y-00.md
+$ rfc-lint draft-a-y-00.md 2>&1 | grep -c "Corpus must be"
+1
+$ printf '# draft-a-z-00: Z\n**Status:** DRAFT\n**Updates:** 12\n' > draft-a-z-00.md
+$ rfc-lint draft-a-z-00.md 2>&1 | grep -c "must list 4-digit RFC numbers"
 1
 ```
 
@@ -688,40 +786,57 @@ lower      = %x61-7A
 
 Witnesses are the filename table under Document identity.
 
+## Out of Scope
+
+**LLM-as-judge verification.** An LLM reading evidence and reporting
+conformance. Excluded because the class of system the corpus constrains
+cannot judge its own conformance (Security Considerations). Extension
+point: none by design — a new evidence type still needs a deterministic
+runner; the two-key commit read is the one place an LLM reads, and it
+reads for judgment, never for the record.
+
+**Security isolation of evidence execution.** Containers, VMs, or
+throwaway hosts around a corpus run. Excluded because the runner's
+sandbox is hygiene, not a boundary, and the boundary belongs to the
+deployment. Extension point: sandbox providers
+(draft-ndn-sandbox-providers-00), selected with `--sandbox`.
+
+**Implementation planning.** Task lists and plans derived from an RFC.
+Excluded because the RFC records the decision and the plan records the
+work; task churn does not belong in a document that freezes. Extension
+point: the plan-breakdown contract (every task names its requirement
+IDs; every ID appears in a task) and draft-ndn-executable-plans-00.
+
+**The Specification body shape.** How a body is organised for an
+implementing agent — data model, defaults, precedence, pseudocode.
+Excluded because it is authoring practice, not a lifecycle or evidence
+rule, and practice promotes only once it proves out. Extension point:
+draft-claude-nlspec-conventions-00 and the skill's template.
+
 ## Alternatives Considered
 
-### Session-scoped planning pipelines
-
-Brainstorm/plan/execute flows produce good specifications with no durable
+**Why not session-scoped planning pipelines?** Brainstorm/plan/execute flows produce good specifications with no durable
 identity: the artifacts are inputs to one implementation run, not a series
 that later work can cite or be held to. Rejected as the sole process;
 this process is designed to coexist with any implementation workflow.
 
-### Mutable living-spec trees (OpenSpec-style)
-
-A current-truth tree with delta migrations answers "what is the behavior
+**Why not a mutable living-spec tree (OpenSpec-style)?** A current-truth tree with delta migrations answers "what is the behavior
 now?" in one read — genuinely better for that question — but records
 neither rationale, nor rejected alternatives, nor consent, and offers no
 multi-author or objection mechanism. The two compose: published RFCs are
 the decision layer; a derived current-state view can sit above them.
 
-### Gherkin/Cucumber as the evidence form
-
-Readable and widely known, but its runner is a hand-maintained
+**Why not Gherkin/Cucumber as the evidence form?** Readable and widely known, but its runner is a hand-maintained
 step-definition library — a shadow codebase that itself needs tests —
 failing the deterministic half of dual verifiability. The same reasoning
 retired FitNesse-style fixture frameworks, whose genuinely good ideas
 (decision and sequence tables; version-controlled executable documents)
 survive here as evidence tables and repo-native literate transcripts.
 
-### LLM-as-judge verification
-
-Circular for a corpus whose purpose is constraining LLM agents; rejected
+**Why not LLM-as-judge verification?** Circular for a corpus whose purpose is constraining LLM agents; rejected
 outright. Deterministic checkers only.
 
-### Full IETF machinery
-
-Maturity ladders, TS/AS applicability statements, variance procedures, and
+**Why not the full IETF machinery?** Maturity ladders, TS/AS applicability statements, variance procedures, and
 multi-level appeals serve a global standards body with adversarial
 stakeholders; at team scale they are ceremony. Deliberately omitted, with
 humans-adjudicate as the entire appeals process.
@@ -926,3 +1041,46 @@ constrained is excluded from judging its own conformance.
   before the `HOME` fallback and only the config one was redirected. The
   evidence contract had been asserting hermetic execution it did not
   deliver, silently, in every corpus in the series.
+- 2026-09-01: body reshaped on NLSpec's precision devices
+  (draft-claude-nlspec-conventions-00). A layering statement and named
+  principles open the Specification; the transcript notation and the
+  sandbox provisions become tables (the sandbox table a witness of
+  [R-sandbox-env]); the masthead becomes an attribute table with
+  defaults whose value sets are lint-proven [R-masthead]; the status
+  vocabulary gains a consequence table as a witness of [R-status-vocab];
+  an Out of Scope section names each exclusion's extension point;
+  Alternatives Considered entries take the question form naming the
+  rejected alternative; and Appendix A catalogues every rfc-lint
+  diagnostic with its recovery — the strings the corpus already greps
+  for, made a stable surface. No lifecycle or evidence rule changed.
+
+## Appendix A: rfc-lint diagnostics
+
+Referenced from Scope and principles. Each diagnostic as `rfc-lint`
+emits it (the strings evidence transcripts grep for), its level, and
+the recovery. An ERROR fails the gate; a WARNING is a review finding.
+
+| Diagnostic | Level | Recovery |
+|---|---|---|
+| missing title line '# RFC NNNN: <Title>' / '# draft-…: <Title>' | ERROR | Make the title line repeat the filename identity |
+| title says RFC N but filename says M | ERROR | Rename or retitle so the two agree |
+| filename must be draft-<author>-<slug>-NN.md … or NNNN-slug.md (published) | ERROR | Rename per Document identity |
+| missing '**Status:** …' line | ERROR | Add the masthead line |
+| invalid status | ERROR | Use one of the seven statuses |
+| numbered RFCs are published by definition | ERROR | A numbered file carries PUBLISHED, SUPERSEDED, or HISTORIC; unpublished work is a draft |
+| publishing assigns the number | ERROR | Rename to NNNN-slug.md and add the index entry, or use a draft status |
+| LAST-CALL requires a Changelog deadline 'objections by …' | ERROR | Add the Changelog entry with a second-resolution instant |
+| LAST-CALL requires a consensus table | ERROR | Add the reviewer/disposition table naming every reviewer |
+| concerns line malformed | ERROR | Rewrite as name, sha, reviewer, then registered / addressed / withdrawn |
+| Corpus must be 'green' or 'red' | ERROR | Fix the declaration |
+| published RFCs cannot declare 'Corpus: red' | ERROR | Turn the corpus green before publishing |
+| … must list 4-digit RFC numbers or cross-repo refs | ERROR | Obsoletes / Updates / Superseded-By take NNNN or owner/repo#NNNN |
+| dependencies line malformed | ERROR | Rewrite as name, https URL, sha |
+| invalid category | ERROR | Standards-Track, Informational, Experimental, or BCP |
+| uses BCP 14 keywords but Terminology lacks the BCP 14 boilerplate sentence | ERROR | Paste the boilerplate into Terminology |
+| ambiguous lowercase normative word in Specification | WARNING | Uppercase it if it is a requirement; reword if not |
+| requirement [R-<slug>] has no embedded evidence block tagged @R-<slug> | ERROR | Add the evidence beside the sentence, or remove the marker |
+| evidence tagged @R-<slug> has no [R-<slug>] requirement marker | ERROR | Mark the sentence the block proves, or drop the block |
+| vacuous evidence: transcript contains only echo/printf/comment commands | WARNING | Exercise the subject, not the caption |
+| SUPERSEDED status requires '**Superseded-By:** NNNN' | ERROR | Add the header naming the successor |
+| PUBLISHED RFC has uncommitted modifications | ERROR | Revert; publish a superseding RFC instead |

@@ -6,6 +6,26 @@ This directory contains formal evaluation reviews of RFC workflow evaluation met
 
 ## Current Reviews
 
+### NLSpec Review and Conversion
+**File**: `nlspec-review.md`  
+**Author**: James Hugman (NLSpec), Norman Nunley / Claude (review)  
+**Date**: 2026-09-01  
+**Status**: Complete — converted into `rfc/draft-claude-nlspec-conventions-00.md`; applied to `skill/template.md` and the body of `rfc/draft-ndn-authoring-rfcs-00.md` (gate green, 22 documents)
+
+#### Summary
+
+Review of NLSpec (jhugman/nlspec @ `eae0052c948f`), a specification format
+for coding-agent implementers, and its conversion into a candidate-practice
+draft for this series.
+
+**Key Findings**:
+- **Complementary layers**: NLSpec specifies the body of a spec; the RFC process specifies identity, lifecycle, consent, and evidence — no overlap in scope
+- **Adopted**: attribute tables with defaults, precedence/fallback/recovery devices, Out of Scope with extension points, bold-question design rationale, temporal anchors
+- **Transformed**: the Definition of Done checkbox (self-reported) becomes the existing marker ⇄ evidence loop; pseudocode ruled descriptive, never evidence
+- **Rejected**: decimal numbering, TOC, (Critical) marker, `[x]` as verification
+- **5 defects in NLSpec itself** (its Out of Scope violates its own §4 rule; validator omits a mandated section; unfalsifiable final DoD item; unlinked exemplars; implemented/verified conflated)
+- **1 lint gap found in this series**: `rfc-lint` pairs `@R-` on any fence type; only `rfc-run` rejects an unrunnable one
+
 ### Norman RFC Workflow Evaluation Methodology Review
 **File**: `evaluation-sélamy-methodology-review.md`  
 **Author**: Patrick Sélamy (methodology), Claude (Anthropic) (review)  

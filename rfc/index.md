@@ -11,8 +11,8 @@ out (as adversarial review was). Other repositories run their own series
 without this one knowing.
 
 ## Published
+- 0001-nlspec-conventions — NLSpec Conventions as RFC Authoring Practice (Informational, jhugman/nlspec-derived: precision devices adopted, DoD transformed into marker ⇄ evidence, pseudocode ruled descriptive)
 
-(none yet — next number: 0001)
 
 ## Drafts — process and tooling
 

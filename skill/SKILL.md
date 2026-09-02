@@ -45,6 +45,16 @@ phase is skipped outright.
    `draft-<author>-<slug>-NN.md` (author-scoped: no number, no coordination,
    no collisions), write the Specification with BCP 14 keywords, and lint to
    exit 0 (`<this skill dir>/rfc-lint <file>`) before showing anyone.
+   The template's Specification body is shaped for an implementing agent
+   (NLSpec-derived — draft-claude-nlspec-conventions-00): a layering
+   statement, data model as descriptive RECORD/ENUM declarations (plain
+   fence, never `@R-` tagged — they fix a reading, they prove nothing),
+   every configurable value in a table with a Default column, precedence
+   and fallback lists that end in a default, an error table with a
+   Recovery column, Out of Scope entries that name their extension point,
+   and Alternatives Considered headed by the question that names the
+   rejected alternative. No Definition of Done: the digest is the
+   checklist and a marker's evidence is its record.
 
 ## Lifecycle — two tracks
 
