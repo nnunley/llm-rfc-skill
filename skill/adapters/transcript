@@ -4,8 +4,11 @@
 # invocation; exit 0 conform / 1 violate, diagnostics name the failure.
 # Vocabulary: '$ cmd' runs; '> line' continues the preceding command
 # (PS2, joined with a newline — heredocs read as a terminal shows them);
-# '? N' asserts exit status (absent = 0); other lines are expected
-# output, byte-exact. A command executes at the first non-continuation
+# '? N' asserts exit status (absent = 0); '! line' asserts one line of
+# stderr (absent = stderr empty); other lines are expected stdout,
+# byte-exact. stdout and stderr are captured separately, so a
+# diagnostic never masquerades as a record; '2>&1' in a command still
+# merges explicitly. A command executes at the first non-continuation
 # line that follows it.
 set -u
 f="${1:?usage: transcript <file>}"
@@ -27,17 +30,24 @@ SANDBOX=$(mktemp -d "$TMPBASE/gi-rfc.XXXXXX") || { echo "transcript: cannot crea
 SANDBOX=$(cd "$SANDBOX" && pwd -P)
 
 replay() {
-    local fails=0 expected="" last_exit=0 last_out="" line want
+    local fails=0 expected="" expected_err="" last_exit=0 last_out="" last_err="" line want
     local pending="" have_pending=0
-    local outfile; outfile=$(mktemp)
+    local outfile errfile; outfile=$(mktemp); errfile=$(mktemp)
     flush() {
         if [ "$last_out" != "$(printf '%s' "$expected")" ]; then
             echo "DIFF $(basename "$f"):"
             printf -- '--want--\n%s\n--got--\n%s\n' "$expected" "$last_out"
             fails=1
         fi
+        if [ "$last_err" != "$(printf '%s' "$expected_err")" ]; then
+            echo "STDERR $(basename "$f"):"
+            printf -- '--want--\n%s\n--got--\n%s\n' "$expected_err" "$last_err"
+            fails=1
+        fi
         expected=""
+        expected_err=""
         last_out=""
+        last_err=""
     }
     run_pending() {
         [ "$have_pending" = 1 ] || return 0
@@ -45,10 +55,12 @@ replay() {
         # eval in THIS shell, capturing through a file: a command
         # substitution would sink `cd`, exports and shell state into a
         # subshell, and a transcript is a session, not a list of one-shots.
-        eval "${pending//$LOGICAL/$SANDBOX}" >"$outfile" 2>&1; last_exit=$?
+        eval "${pending//$LOGICAL/$SANDBOX}" >"$outfile" 2>"$errfile"; last_exit=$?
         last_out="$(cat "$outfile")"
+        last_err="$(cat "$errfile")"
         # canonicalise: the transcript speaks the logical path
         last_out="${last_out//$SANDBOX/$LOGICAL}"
+        last_err="${last_err//$SANDBOX/$LOGICAL}"
         have_pending=0
     }
     while IFS= read -r line || [ -n "$line" ]; do
@@ -67,6 +79,9 @@ ${line#> }"
                    want="${line#? }"
                    [ "$last_exit" = "$want" ] || { echo "EXIT $(basename "$f"): want $want got $last_exit"; fails=1; }
                    last_exit=0 ;;
+            '! '*) run_pending
+                   expected_err="${expected_err:+$expected_err
+}${line#! }" ;;
             *)     run_pending
                    expected="${expected:+$expected
 }$line" ;;
@@ -74,7 +89,7 @@ ${line#> }"
     done < "$f"
     run_pending
     flush
-    rm -f "$outfile"
+    rm -f "$outfile" "$errfile"
     [ "$last_exit" = 0 ] || { echo "EXIT $(basename "$f"): want 0 got $last_exit"; fails=1; }
     return $fails
 }

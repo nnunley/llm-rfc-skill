@@ -170,7 +170,7 @@ INTERVIEW
 $ rfc-fsm-exec w.fsm --state run | grep -c "state: INTERVIEW"
 1
 $ rfc-fsm-exec w.fsm --state run --attach "no colon here"
-rfc-fsm-exec: evidence must be 'key: value'
+! rfc-fsm-exec: evidence must be 'key: value'
 ? 2
 ```
 

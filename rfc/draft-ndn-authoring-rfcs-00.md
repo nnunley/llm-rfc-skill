@@ -113,10 +113,14 @@ multiline command as typed, reading exactly as a terminal displays it,
 and the command executes at the first non-continuation line. Heredoc provisioning SHOULD
 replace escape-laden single-line `printf` for multiline content; as a
 side effect, `> `-prefixed heredoc lines shield nested evidence fences
-from the markdown parser. Other lines are the expected output, compared
-byte-exactly; a line
+from the markdown parser. Other lines are the expected standard output,
+compared byte-exactly; a line
 `? N` asserts that the immediately preceding command exited with status N,
-and absent a `?` line the status is asserted to be 0. Where real output
+and absent a `?` line the status is asserted to be 0. Standard error is
+captured separately: a line `! text` asserts one line of it, byte-exactly
+and in order, and absent any `!` line the command's standard error is
+asserted to be empty — silence is evidence, the way an absent `?` asserts
+success. A command that wants the merged view says `2>&1` itself. Where real output
 embeds generated identifiers or timestamps, the transcript asserts through
 a deterministic projection (`grep -c`, `cut`, `sort`) — the projection is
 part of the evidence. Runners on systems where `/tmp` is a symlink
@@ -130,16 +134,17 @@ The transcript runner provides the skill's own tools on `PATH` for every
 corpus it replays; this document's transcripts rely on that provision
 for `rfc-lint` and `rfc-tangle`, checking conformance against THIS
 document. One notation limit is normative: an expected-output line
-beginning `$ ` or `> ` cannot be expressed literally (it reads as a
-command or a continuation) — such output is asserted through a
-projection instead.
+beginning `$ `, `> `, `? `, or `! ` cannot be expressed literally (it
+reads as a command, a continuation, an exit assertion, or a standard-error
+line) — such output is asserted through a projection instead.
 
 | Line form | Meaning |
 |---|---|
 | `$ cmd` | A command; shell state persists to the next command in the block |
 | `> text` | PS2 continuation of the preceding command; the newline is preserved and the command runs at the first non-continuation line |
 | `? N` | The immediately preceding command exited with status N |
-| any other line | Expected output, compared byte-exactly; absent a `? N` line, the preceding command's status is asserted 0 |
+| `! text` | One line of the preceding command's standard error, compared byte-exactly and in order; absent any `! ` line, standard error is asserted empty |
+| any other line | Expected standard output, compared byte-exactly; absent a `? N` line, the preceding command's status is asserted 0 |
 
 ```transcript @R-sandbox-env
 $ mkdir -p "$XDG_DATA_HOME" "$XDG_STATE_HOME" "$XDG_CACHE_HOME" "$XDG_CONFIG_HOME"
