@@ -13,11 +13,11 @@
 -->
 **Category:** Standards-Track (normative) | Informational | Experimental
 **Authors:** Name <email>
-**Date:** YYYY-MM-DD
 <!-- Optional headers — add only with real values (4-digit RFC numbers):
        **Obsoletes:** NNNN       full replacement of a published RFC
        **Updates:** NNNN         partial amendment, original stays authoritative
-       **Superseded-By:** NNNN   set on the OLD RFC when its successor publishes -->
+       **Superseded-By:** NNNN   set on the OLD RFC when its successor publishes
+       **Objections-By:** YYYY-MM-DDTHH:MM:SSZ   the LAST-CALL objection deadline -->
 
 
 ## Abstract
@@ -239,11 +239,13 @@ YYYY), …".
 - Reference projects, if any: name with URL, language, one sentence on
   the pattern worth studying — exemplars, not dependencies.
 
-## Changelog
+<!-- No Date header and no Changelog section: the commit log is the
+     document's history — the rendered page derives created/updated from
+     git, and
+     messages under Commit discipline carry what changed and why —
+     never restated in-band. -->
 
-- YYYY-MM-DD: DRAFT created.
-
-<!-- Appendices (if any) follow the Changelog, lettered A, B, …, each
+<!-- Appendices (if any) follow References, lettered A, B, …, each
      referenced from the body: attribute catalogs, error catalogs, long
      examples. Do NOT write a Definition of Done: the derived digest
      (rfc-render-llm) is the checklist — exactly the marked requirements,

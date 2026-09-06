@@ -23,7 +23,7 @@ na() { NA="${NA:+$NA }$1"; }
 # them, so it must locate rfc-fsm-render the same way rfc-check does.
 LINT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-REQUIRED_SECTIONS="Abstract Motivation Terminology Specification Alternatives_Considered Security_Considerations References Changelog"
+REQUIRED_SECTIONS="Abstract Motivation Terminology Specification Alternatives_Considered Security_Considerations References"
 VALID_STATUS="DRAFT|LAST-CALL|PUBLISHED|SUPERSEDED|WITHDRAWN|HISTORIC|POSTPONED"
 VALID_CATEGORY="Standards-Track|Informational|Experimental|BCP"
 BCP14_RE='\b(MUST NOT|MUST|REQUIRED|SHALL NOT|SHALL|SHOULD NOT|SHOULD|RECOMMENDED|NOT RECOMMENDED|MAY|OPTIONAL)\b'
@@ -101,8 +101,8 @@ lint_file() {
     # 2c. LAST-CALL must state its deadline (RFC 2026 §6.1.2 mandates minimum
     # review windows; here the window must at least be explicit)
     if [[ "$status" == "LAST-CALL" ]]; then
-        grep -qiE "objections by [0-9]{4}-[0-9]{2}-[0-9]{2}" "$f" || \
-            err "$f" "LAST-CALL requires a Changelog deadline 'objections by YYYY-MM-DDTHH:MM:SSZ' (bare date = midnight UTC; date with zone offset = midnight in that zone)"
+        grep -qE "^\*\*Objections-By:\*\* [0-9]{4}-[0-9]{2}-[0-9]{2}" "$f" || \
+            err "$f" "LAST-CALL requires a masthead deadline '**Objections-By:** YYYY-MM-DDTHH:MM:SSZ' (bare date = midnight UTC; date with zone offset = midnight in that zone)"
         ck "deadline"
         # Consensus record (rfcbot-derived): consent is registered, never
         # inferred. LAST-CALL requires a reviewer table; dispositions are
@@ -139,6 +139,13 @@ lint_file() {
             fi
             ck "consensus($(grep -c . <<< "$cons_rows") reviewer(s))"
         fi
+    elif grep -qE "^\*\*Objections-By:\*\*" "$f"; then
+        # The deadline is an attribute of the LAST-CALL state: it exists
+        # exactly while the call is open. Leaving the state removes it —
+        # a status edit that keeps the header is an incomplete transition.
+        err "$f" "Objections-By is LAST-CALL state — the deadline exists only while the call is open; remove it when leaving the state"
+        ck "deadline"
+        na "consensus"
     else
         na "deadline"
         na "consensus"
@@ -227,7 +234,7 @@ lint_file() {
         heading="${sec//_/ }"
         if grep -qE "^## $heading$" "$f"; then nsec=$((nsec + 1)); else err "$f" "missing required section '## $heading'"; fi
     done
-    ck "sections($nsec/8)"
+    ck "sections($nsec/$(set -- $REQUIRED_SECTIONS; printf %s $#))"
 
     # 4. BCP 14 discipline
     if grep -qE "$BCP14_RE" "$f"; then

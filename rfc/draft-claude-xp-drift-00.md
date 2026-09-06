@@ -3,7 +3,6 @@
 **Status:** DRAFT
 **Category:** Experimental
 **Authors:** Claude (drafting agent), Norman Nunley, Jr <nnunley@gmail.com>
-**Date:** 2026-08-21
 
 ## Abstract
 
@@ -608,14 +607,3 @@ generator first, as its own story.
   duplication in agent-written codebases.
 - RFC 5234 (ABNF), RFC 2119, RFC 8174 (BCP 14).
 
-## Changelog
-
-- 2026-08-21: DRAFT created, absorbing draft-claude-xp-drift-00,
-  draft-claude-xp-drift-00, and draft-claude-xp-drift-00. The three
-  were one concern at one gate — what must not be allowed to accumulate —
-  split across documents that shared a motivation and referenced each other
-  to be understood. Requirement IDs carry forward; `sweep:` and `deps:`
-  collapse into one `drift:` attachment. The difference in enforcement
-  (structural and supply block, textual advises) is now stated as a
-  confidence distinction rather than implied by living in separate
-  documents.

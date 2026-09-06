@@ -3,7 +3,6 @@
 **Status:** DRAFT
 **Category:** Experimental
 **Authors:** Norman Nunley, Jr <nnunley@gmail.com>, Claude (drafting agent)
-**Date:** 2026-08-14
 
 ## Abstract
 
@@ -265,28 +264,3 @@ choice.
 - agent-safehouse — the wrapped sandbox in spacedock's case; a candidate
   provider here. https://agent-safehouse.dev
 
-## Changelog
-- 2026-08-25: `env-scrub` scrubs every XDG base directory, not
-  `XDG_CONFIG_HOME` alone; the witness now proves `XDG_DATA_HOME` is
-  replaced too. Redirecting `HOME` does not contain a subject that follows
-  the XDG spec, because those variables are read before the `HOME`
-  fallback — a real corpus run wrote into the runner's own
-  `~/.local/share`. Edited from the ndn track under
-  `sandbox-xdg-data-home`: changing the provider would otherwise have left
-  this paragraph describing behaviour the code no longer has.
-
-- 2026-08-14: draft-00 created from the design conversation: configurable
-  sandbox providers on spacedock's detect/gate/wrap seam, selected by
-  series profile with flag/env override, hard-error gate, built-in
-  `env-scrub` hygiene floor. Evidence is red until rfc-run gains the
-  provider seam (spec-first; the transcripts above are the acceptance
-  criteria).
-- 2026-08-14: external-review hardening — `none` is honored only from
-  the --sandbox flag; RFC_SANDBOX=none or a profile naming none is a
-  loud error rather than a silent defeat of the declared hygiene floor.
-- 2026-08-20: per-invocation sandbox isolation added
-  ([R-sandbox-per-invocation]) after the bootstrap transcript adapter's
-  shared physical sandbox produced exactly the failure the requirement now
-  forbids: a killed corpus run orphaned the cross-run lock, and every
-  subsequent run reported six unrelated drafts red. Found by Claude while
-  running concurrent gates; the remedy is isolation, not a better lock.

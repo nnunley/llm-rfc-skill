@@ -3,7 +3,6 @@
 **Status:** DRAFT
 **Category:** Experimental
 **Authors:** Norman Nunley, Jr <nnunley@gmail.com>, Claude (drafting agent)
-**Date:** 2026-08-14
 
 ## Abstract
 
@@ -197,16 +196,3 @@ completion feeds human gates — the audit narrows the forgery space to
 - draft-ndn-conformance-execution-00 — the gate the plan's corpus
   obligations still run through; a plan run never substitutes for it.
 
-## Changelog
-
-- 2026-08-14: draft-00 created from the author's requirement: plans
-  derived from RFCs as executable state machine documents — next step
-  provided, advance refused without guard evidence, alternatives
-  recorded as path plus why, ledgers audited against machine and
-  repository so they are hard to forge without doing the work, and the
-  whole surface encapsulated as three verbs over two files for skill or
-  MCP wrapping.
-- 2026-08-14: evidence rewritten from raw shell transcripts to the
-  plan-run vocabulary after author corrections — documents carry intent
-  in the domain's language; the vocabulary is data executed by the
-  generic flow runner, per the evidence-adapters doctrine.

@@ -1,9 +1,8 @@
-# RFC 0001: NLSpec Conventions as RFC Authoring Practice
+# draft-claude-nlspec-conventions-00: NLSpec Conventions as RFC Authoring Practice
 
-**Status:** PUBLISHED
+**Status:** DRAFT
 **Category:** Informational
 **Authors:** Claude (drafting agent), Norman Nunley, Jr <nnunley@gmail.com>
-**Date:** 2026-09-01
 
 ## Abstract
 
@@ -92,7 +91,7 @@ adopted or transformed convention takes in an RFC.
 | 6.4 | Integration smoke test as the final DoD item | covered | a transcript block is an executable smoke test |
 | 6.5 | Validation matrices across implementations | adopt | evidence table with one row per case |
 | 6.6 | HTML comments linking DoD items to implementation | reject | evidence blocks carry the link |
-| 7 | Appendices, lettered, each referenced from the body | adopt | after Changelog; digest drops them |
+| 7 | Appendices, lettered, each referenced from the body | adopt | after the final section; digest drops them |
 | 8 | Pseudocode conventions (UPPER keywords, `--` comments, snake/Pascal case) | transform | descriptive only; see Pseudocode |
 | 8.3 | Layered composition notation | adopt | Specification prose |
 | 8.4 | Behavior summaries after complex pseudocode | adopt | Specification prose |
@@ -113,6 +112,7 @@ adopted or transformed convention takes in an RFC.
 | 15.1 | "(see Section X.Y)" internal references | reject | cite `[R-<slug>]` or the heading text |
 | 15.2 | Hard/soft inter-spec dependencies with imported types | covered / adopt | draft-ndn-cross-repo-00 for identity; imported-type lists adopted |
 | 15.3 | External references with full URLs | covered | References |
+| 16 | Out of Scope exclusions justified by layering (requirement gathering, decomposition, version control) | transform | permissively open seams; this series registers an offer at each — see Supplying NLSpec’s open seams |
 
 ### Out of Scope
 
@@ -276,7 +276,7 @@ yet explained itself. Both are review findings.
 
 Out of Scope, Definition of Done, and appendices are additions on top of
 the mandatory structure. A document carrying all of them beside the
-eight mandatory sections lints clean; the process does not police
+seven mandatory sections lints clean; the process does not police
 section names beyond the mandatory set. [R-nlspec-sections-compatible]
 
 ```transcript @R-nlspec-sections-compatible
@@ -301,12 +301,10 @@ $ cat > draft-a-z-00.md <<'EOF'
 > None: the document executes nothing.
 > ## References
 > - r
-> ## Changelog
-> - 2026-09-01: created.
 > ## Appendix A: Reference
 > Referenced from Specification.
 > EOF
-$ rfc-lint draft-a-z-00.md 2>&1 | grep -c 'sections(8/8)'
+$ rfc-lint draft-a-z-00.md 2>&1 | grep -c 'sections(7/7)'
 1
 $ rfc-lint draft-a-z-00.md >/dev/null 2>&1
 ? 0
@@ -324,6 +322,42 @@ masthead and sandbox tables, Out of Scope section, question-form
 alternatives, and diagnostics appendix are this document applied. The
 BCP's rules are unchanged, because none of this is a lifecycle or
 evidence rule; this document remains the disposition record.
+
+### Supplying NLSpec's open seams
+
+NLSpec's own Out of Scope section (its §16) excludes requirement
+gathering, system decomposition, and version control conventions by
+layering: "these are workflow concerns". That is not a missing
+extension point — NLSpec §4 explicitly sanctions layering as an
+exclusion justification, and a named layer is a **permissive**
+extension convention: any convention the adopting project brings to
+that layer is a legal extension. What such a seam lacks is only a
+registered offer, and since version control conventions are inherently
+per-project, an offer — never a mandate — is the correct shape.
+
+This series is one such offer. A project authoring NLSpec documents
+MAY adopt it as its version control and lifecycle convention with the
+body format untouched:
+
+- The NLSpec body becomes the Specification of a draft named
+  `draft-<author>-<slug>-NN.md` — author-scoped, so concurrent authors
+  never coordinate.
+- Revision is in-place while DRAFT with the commit log as its
+  history; spec review is registered consent (LAST-CALL, consensus
+  table, concerns block); spec diffs land under commit discipline.
+- Publication freezes and numbers the document; later change is a
+  superseding or updating draft, so spec history is never rewritten.
+- The Definition of Done's verification burden moves onto marker ⇄
+  evidence pairing and the replayed corpus — closing the loop the
+  checkbox leaves to the implementer's own report.
+
+The other two seams take the same shape: the BCP's authoring path
+(research, interview, synthesis, formalize) stands at the
+requirement-gathering seam, and NLSpec's one-document-or-many question
+maps onto series membership at the decomposition seam — one RFC per
+decision, cross-referenced by requirement ID, with `Updates:` for
+partial amendment. Each is one possibility at an open seam, chosen per
+project, never a claim that the format demands it.
 
 ## Out of Scope
 
@@ -415,17 +449,3 @@ anywhere.
 - BCP 14 = RFC 2119 + RFC 8174 — requirement keywords, where NLSpec's
   imperative voice lands.
 
-## Changelog
-
-- 2026-09-01: draft-00 created from a review of NLSpec pinned at
-  `eae0052c948f`. Every NLSpec convention receives a disposition in one
-  table; precision devices (defaults, precedence, fallback, error
-  recovery, escape hatches, RECORD/ENUM/INTERFACE, pseudocode) are
-  adopted as body-writing guidance; the Definition of Done is
-  transformed into the existing marker ⇄ evidence loop with a
-  reader's-index section allowed [R-dod-cites-marker]; pseudocode is
-  ruled descriptive and untaggable [R-pseudocode-not-evidence]; the
-  added sections are shown lint-compatible
-  [R-nlspec-sections-compatible]. Found while proving the second rule:
-  lint pairs a tagged block of any type name and only replay rejects
-  it — recorded as an Out of Scope item with its extension point.

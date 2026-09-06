@@ -3,7 +3,6 @@
 **Status:** DRAFT
 **Category:** Experimental
 **Authors:** Claude (drafting agent), Norman Nunley, Jr <nnunley@gmail.com>
-**Date:** 2026-08-19
 
 ## Abstract
 
@@ -393,15 +392,3 @@ here, which is the intended accommodation rather than a gap.
   follow.
 - RFC 5234 (ABNF), RFC 2119, RFC 8174 (BCP 14).
 
-## Changelog
-
-- 2026-08-19: the deck declared a persistent system artifact rather than a
-  per-session one, so draft-claude-xp-backlog-00 can derive implementation
-  order from a graph spanning the current story set.
-- 2026-08-19: DRAFT created as the design session delegated from
-  draft-claude-xp-pairing-00. Specifies the metaphor, CRC deck, walkthrough,
-  and simplify stages as a guarded machine, and makes the deck a checked
-  artifact: the index card's three-responsibility budget, collaborator
-  closure, root reachability, and metaphor terms bound to card names are all
-  enforced by the `crc` adapter, with rejections carried as evidence through
-  the `crc-check` vocabulary.

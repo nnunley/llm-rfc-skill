@@ -3,7 +3,6 @@
 **Status:** DRAFT
 **Category:** Experimental
 **Authors:** Norman Nunley, Jr <nnunley@gmail.com>, Claude (drafting agent)
-**Date:** 2026-08-14
 
 ## Abstract
 
@@ -72,8 +71,6 @@ $ cat > s/draft-a-x-00.md <<'EOF'
 > None beyond existing.
 > ## References
 > None.
-> ## Changelog
-> - created
 > EOF
 $ rfc-check s 2>&1 | grep -c "rfc-check: PASS"
 1
@@ -176,15 +173,3 @@ merge gated on the author's optimism.
 - draft-ndn-sandbox-providers-00, draft-ndn-evidence-adapters-00 — the
   execution seams the gate composes.
 
-## Changelog
-
-- 2026-08-20: the make target is `test`, not `check`. Naming only — the
-  gate's one body is still `rfc-check`, and make remains a thin caller.
-  `check` is the GNU Coding Standards name and `test` the prevailing one;
-  the tie went to the linter, since `checkmake` treats `test` as the
-  expected target and a convention a tool can check beats one it cannot.
-- 2026-08-14: draft-00 created from external-reader feedback ("how do I
-  test conformance — would a make target exist?"): the gate gets one
-  body (rfc-check), make/CI/docs become thin callers, spot tests are
-  named and specified as identical-behavior tool invocations with no
-  merge standing.

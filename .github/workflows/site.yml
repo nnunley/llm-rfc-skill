@@ -18,6 +18,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history: Created/Updated spans are derived from git log
       - name: Render RFC series
         run: |
           skill/rfc-render-site rfc _site

@@ -3,7 +3,6 @@
 **Status:** DRAFT
 **Category:** Experimental
 **Authors:** Norman Nunley, Jr <nnunley@gmail.com>, Claude (drafting agent)
-**Date:** 2026-08-14
 
 ## Abstract
 
@@ -136,8 +135,8 @@ the path is deterministically validated against the machine on every
 read; `commit:` attachments are resolvable against the repository when
 one is present; summaries are for the human glance. A run record is
 execution state, NOT an artifact by default — it lives with the work and
-MAY be deleted, committed, or cited (a Changelog or consensus row MAY
-reference a run) as the process outcome warrants; nothing in this
+MAY be deleted, committed, or cited (a consensus row or a commit
+message MAY reference a run) as the process outcome warrants; nothing in this
 document requires committing it.
 
 An RFC's LIFECYCLE TRAJECTORY is derivable as a run-record path — the
@@ -266,32 +265,3 @@ files MUST NOT contain secrets or PII — state names only.
 - draft-ndn-evidence-adapters-00 — flow vocabularies with fsm binding;
   a session file is the executor-side dual of a flow's path witness.
 
-## Changelog
-
-- 2026-08-14: draft-00 created: session mode implemented in rfc-fsm-exec
-  (--state FILE), state file as validated path witness, progressive
-  disclosure of the current stage only, timeout advance via the deadline
-  handler.
-- 2026-08-14: the fsm vocabulary now reserves the state name `timeout`
-  (process BCP), closing the shadowing the session executor's
-  pseudo-target introduced: a machine can no longer declare a state the
-  executor cannot reach.
-- 2026-08-14: run records added on author review, through two
-  corrections. The first attempt (a committed "process token") was
-  rejected twice: the state should be a structured file carrying both
-  the walked path and per-state evidence (commits, decision summaries),
-  semi-verifiable by construction, and NOT an artifact by default —
-  executing a process document is launching a workflow, and the record
-  is the run's state. Evidence attaches via --attach as indented
-  key: value lines the executor skips; # lines carry the machine pin.
-  Finally, the relationship is inverted and stated: an RFC is a subset
-  of run-record functionality — Status is the current state, git history
-  the path, Changelog the attachments — so document lifecycles are
-  derivable runs, checkable by the same witness.
-- 2026-08-14: the ledger hardened per the author's forge-resistance
-  requirement — guarded advance (refusal, not warning), automatic HEAD
-  anchoring inside repositories, branch rationale via --why, and --audit
-  re-deriving every claim (path, guards, commit/anchor resolution,
-  anchor ancestry) so forging the record costs approximately doing the
-  work [R-run-audit]. The RFC-as-subset claim withdrawn on adversarial
-  review, narrowed to lifecycle-trajectory derivability.

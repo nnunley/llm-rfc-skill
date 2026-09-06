@@ -3,7 +3,6 @@
 **Status:** DRAFT
 **Category:** BCP
 **Authors:** Norman Nunley, Jr <nnunley@gmail.com>, Claude (drafting agent)
-**Date:** 2026-08-14
 
 ## Abstract
 
@@ -236,7 +235,7 @@ $ rfc-lint draft-a-y-00.md 2>&1 | grep -c "publishing assigns the number"
 <!-- evidence: @R-status-vocab -->
 | Status | Form | Meaning |
 |---|---|---|
-| `DRAFT` | draft | Revised in place; every change logged; corpus red only by declaration |
+| `DRAFT` | draft | Revised in place; history in the commit log; corpus red only by declaration |
 | `LAST-CALL` | draft | Consensus table and deadline mandatory; a recorded concern blocks; expiry publishes by default |
 | `POSTPONED` | draft | Parked; resumes to DRAFT or ends WITHDRAWN; never publishes directly |
 | `WITHDRAWN` | draft | Dead; terminal |
@@ -249,17 +248,21 @@ $ rfc-lint draft-a-y-00.md 2>&1 | grep -c "publishing assigns the number"
 The `**Name:** value` lines after the title are the document's
 machine-read surface. The table is exhaustive for what `rfc-lint`
 reads; an absent elective header takes its default, and a header whose
-value lies outside its set is a lint error. [R-masthead]
+value lies outside its set is a lint error. [R-masthead] Dates are
+never authored: the rendered page derives created and last-updated
+from the commit log, the way history left the document when the
+Changelog did.
 
 | Header | Values | Default | Meaning |
 |---|---|---|---|
 | `Status` | the seven statuses above | none (mandatory) | Lifecycle state; selects every status-dependent check |
 | `Category` | `Standards-Track`, `Informational`, `Experimental`, `BCP` | none | RFC 2026 category; informs review, gates nothing |
 | `Corpus` | `green`, `red`, with a parenthetical note allowed | `green` | Declared replay result; `rfc-run --expect` verifies it both ways |
+| `Objections-By` | second-resolution instant (bare date = midnight UTC; date with zone offset = midnight there) | none | Objection deadline; present exactly while in LAST-CALL (both directions lint-enforced) |
 | `Obsoletes` | `NNNN`, or `owner/repo#NNNN [@ sha]` | none | Full replacement of a published RFC |
 | `Updates` | `NNNN`, or `owner/repo#NNNN [@ sha]` | none | Partial amendment; only the named requirement IDs are replaced |
 | `Superseded-By` | `NNNN`, or `owner/repo#NNNN` | none | Set on the old RFC when its successor publishes; mandatory in SUPERSEDED |
-| `Authors`, `Date` | free text | none | Attribution and creation date; not lint-read |
+| `Authors` | free text | none | Attribution (license credit); not lint-read |
 
 ```transcript @R-masthead
 $ printf '# draft-a-x-00: X\n**Status:** DRAFT\n**Category:** Draft\n' > draft-a-x-00.md
@@ -276,15 +279,18 @@ $ rfc-lint draft-a-z-00.md 2>&1 | grep -c "must list 4-digit RFC numbers"
 ### Required structure
 
 Every document MUST contain the sections Abstract, Motivation, Terminology,
-Specification, Alternatives Considered, Security Considerations,
-References, and Changelog. [R-sections] An RFC without alternatives is an
+Specification, Alternatives Considered, Security Considerations, and
+References. [R-sections] Document history is not a section: the commit
+log is the record, its messages governed by Commit discipline, and
+dates and authorship are gleaned from git rather than restated in-band
+— a hand-maintained history drifts from the log it shadows. An RFC without alternatives is an
 announcement, not a proposal; a Security Considerations of "none" takes an
 argument, not an assertion.
 
 ```transcript @R-sections
 $ printf '# draft-a-x-00: X\n**Status:** DRAFT\n' > draft-a-x-00.md
 $ rfc-lint draft-a-x-00.md 2>&1 | grep -c "missing required section"
-8
+7
 ```
 
 ### Formal language
@@ -334,7 +340,7 @@ REQUIRES its timeout handler: the `-> <target>` names the transition the
 process takes when the deadline expires, and it MUST be one of the
 state's declared transitions (a timeout is never a new edge — it selects
 a default among the legal moves). An OPTIONAL `<instant>` uses the same
-second-resolution forms as `objections by` (bare date = midnight UTC;
+second-resolution forms as `Objections-By:` (bare date = midnight UTC;
 date with zone offset = midnight in that zone); a machine that describes
 a recurring process omits it, and the governing document supplies the
 concrete instant. The state name `timeout` is RESERVED — it is the
@@ -543,18 +549,22 @@ frozen: modification in the working tree is a lint error, and the sole
 permitted edit is setting `SUPERSEDED` with its `**Superseded-By:**` link
 when a successor publishes. [R-immutable] A document in `SUPERSEDED`
 status MUST name its successor. [R-supersede] A document in `LAST-CALL`
-MUST state its objection deadline in the Changelog: `objections by
-<instant>`, resolved to second precision — the canonical form is
+MUST state its objection deadline in the masthead:
+`**Objections-By:** <instant>`, resolved to second precision — the canonical form is
 `YYYY-MM-DDTHH:MM:SSZ` (numeric zone offsets permitted); a bare
 `YYYY-MM-DD` denotes midnight UTC of that date, and `YYYY-MM-DD±HH:MM`
 denotes midnight in that zone. Every accepted form names one unambiguous
-second. [R-lastcall]
+second. The deadline is an attribute of the LAST-CALL state and exists
+exactly while the document is in it: entering the state adds the
+header, and every outbound transition removes it — both directions are
+lint errors, so a status edit that keeps the header is an incomplete
+transition, caught mechanically. [R-lastcall]
 `LAST-CALL` is not a one-way gate: the document returns to `DRAFT` when
 substantive objections stand unaddressed at the deadline, or when the
 call is retracted as premature (a last call asserts a settled design;
 active revision falsifies the assertion). From `LAST-CALL` a document
 proceeds to `PUBLISHED` on rough consensus, returns to `DRAFT`, or ends
-`WITHDRAWN` — a Changelog entry records which, and why. How dispositions
+`WITHDRAWN` — the commit that moves the status records which, and why. How dispositions
 travel into the record — transport profiles, the reviewed-at revision
 anchor, transcription, and post-publication concerns — is specified in
 draft-ndn-feedback-registration-00, adopted by reference.
@@ -616,7 +626,7 @@ PUBLISHED -> SUPERSEDED
 PUBLISHED -> HISTORIC
 deadline LAST-CALL -> PUBLISHED    ; expiry executes the silence default; standing concerns preempt
 terminal SUPERSEDED HISTORIC WITHDRAWN
-note DRAFT: revise in place, Changelog each change, corpus can be red
+note DRAFT: revise in place, history in commits, corpus can be red
 note LAST-CALL: consensus table + deadline required, concerns block
 note POSTPONED: parked - sound idea, wrong time
 note PUBLISHED: frozen, number assigned, corpus-green invariant
@@ -663,7 +673,10 @@ $ rfc-lint 0001-x.md 2>&1 | grep -c "requires '\*\*Superseded-By:\*\*"
 
 ```transcript @R-lastcall
 $ printf '# draft-a-x-00: X\n**Status:** LAST-CALL\n' > draft-a-x-00.md
-$ rfc-lint draft-a-x-00.md 2>&1 | grep -c "objections by YYYY-MM-DDTHH:MM:SSZ"
+$ rfc-lint draft-a-x-00.md 2>&1 | grep -c "Objections-By:"
+1
+$ printf '# draft-a-y-00: Y\n**Status:** DRAFT\n**Objections-By:** 2026-08-21\n' > draft-a-y-00.md
+$ rfc-lint draft-a-y-00.md 2>&1 | grep -c "remove it when leaving the state"
 1
 ```
 
@@ -885,179 +898,6 @@ constrained is excluded from judging its own conformance.
   `docs/rfc/draft-ndn-multi-project-registry-02.md`, whose evidence
   conventions this document inherits.
 
-## Changelog
-
-- 2026-08-15: derived displays became a verified surface [R-fsm-render],
-  prompted by a real defect: the published lifecycle diagram rendered as
-  "Syntax error in text" on the site while the whole corpus reported
-  green. `rfc-fsm-render` folded each deadline into an inline note whose
-  body carried `-> <target>`, and mermaid lexes an inline note body as
-  diagram source. Two of thirteen published diagrams were broken — every
-  one with a `deadline` line. Renderer now emits `note`/`end note` block
-  notes (opaque body, arrow displayed verbatim); rfc-lint gained an
-  offline subset check on derived renders, and CI gained
-  `rfc-mermaid-check`, which renders every diagram with real mermaid.
-  The gap this closes: the corpus verified the fsm SOURCE and never the
-  artifact readers actually see.
-- 2026-08-13/14: process designed and iterated in working session —
-  dual verifiability, literate evidence, Gherkin rejection, fast/full
-  tracks, draft naming, fidelity reservation — each decision exercised
-  against a real specification (the registry RFC) before being recorded
-  here.
-- 2026-08-14: draft-00 created in the dedicated cross-project rfcs
-  repository.
-- 2026-08-14: full evidence replay (rfc-run) went green after two
-  discoveries fed back into the conventions: sandboxes neutralize system
-  git config AND redirect XDG_CONFIG_HOME (host excludes had leaked), and
-  expected-output lines beginning "$ " are inexpressible — asserted via
-  projection (recorded as a normative notation limit).
-- 2026-08-14: entered LAST-CALL (full track: this document standardizes
-  across projects) — objections by 2026-08-21. Reviewers invited: chazu,
-  mparrett, rdaum.
-- 2026-08-14: returned to DRAFT — the last call was premature (the document
-  is still under active revision; a last call asserts a settled design).
-  Review remains welcome as ordinary draft review.
-- 2026-08-14: lifecycle gap found in review — LAST-CALL had no specified
-  outbound transitions (the same day's premature-call retraction was
-  therefore unspecified behavior). LAST-CALL -> DRAFT | PUBLISHED |
-  WITHDRAWN now explicit.
-- 2026-08-14: fsm evidence type added — the lifecycle transition relation
-  is now a verified machine [R-lifecycle] with allowed/forbidden witnesses
-  (including LAST-CALL -> DRAFT, the transition exercised before it was
-  specified), and fsm validation itself is a proven requirement [R-fsm].
-  Displays (mermaid/D2) are derived by rfc-fsm-render, never authored.
-- 2026-08-14: dependency inversion fixed — Evidence conventions moved from
-  registry RFC into this BCP as canonical [Finding 1]. Normative content
-  from draft-ndn-multi-project-registry-02's section merged with BCP-specific
-  additions (rfc-lint/rfc-tangle on PATH) and notation limit, eliminating
-  process BCP normatively depending on feature draft in another repo.
-- 2026-08-14: conformance corpus CI made normative [Finding 2]. Lifecycle
-  section now prescribes rfc-lint over all documents and rfc-run over all
-  published RFC evidence in CI as a SHALL requirement; changes breaking
-  published evidence MUST NOT merge (draft evidence allowed to fail).
-  Conformance workflow created in .github/workflows/conformance.yml.
-- 2026-08-14: Security Considerations clarified [Finding 3]. Sandbox
-  distinguished as hygiene isolation (preventing inter-block leakage), NOT
-  security boundary; security isolation (container/VM/throwaway host) MUST be
-  deployed at execution layer by deployment. rfc-run comment header updated.
-- 2026-08-14: cross-series citation form added to Practice [Finding 4].
-  Published RFCs cited as series/NNNN (e.g. llm-rfc-skill/0001); drafts by
-  full draft name; bare form within single series.
-- 2026-08-14: locality rule added to Practice — RFCs live in the repository
-  whose behavior they govern; project-specific RFCs belong in that project's
-  own rfc/ series, never centralized. This repository carries only
-  cross-project process/skill RFCs. README.md clarified accordingly.
-- 2026-08-14: the silence-default distinction made explicit — consent by
-  silence exists only inside a declared LAST-CALL window; draft-stage
-  silence carries no meaning (comment request and consent gate are
-  different instruments).
-- 2026-08-14: POSTPONED status added (from Rust's FCP dispositions):
-  non-terminal, so the machine gains its resume (-> DRAFT) and
-  termination (-> WITHDRAWN) arcs — the fsm dead-end rule enforces that
-  requirement mechanically, as demonstrated before wiring.
-- 2026-08-14: registered consensus adopted (rfcbot-derived): LAST-CALL
-  documents carry a lint-checked consensus table; concerns block
-  publication; the deadline binds only after full registration.
-- 2026-08-14: publication gate adopted (W3C CR / TC39 stage-4 derived):
-  evidence MUST replay green before publication — resolving the latent
-  tension between spec-first red corpora and the published-corpus-green
-  CI requirement.
-- 2026-08-14: hygiene rule adopted — no local-machine references, secrets,
-  or PII-bearing paths in documents; generic placeholders for examples
-  (lint-enforced).
-- 2026-08-14: fsm notation gains per-state note guidance and the machine
-  becomes executable: rfc-fsm-exec derives an agent's stage permissions
-  (query) and guards transitions (exit code) directly from the verified
-  machine — process guidance from the document, never from memory.
-- 2026-08-14: deadlines separated from LAST-CALL and given second
-  resolution — the fsm vocabulary gains optional `deadline <state>
-  [<instant>] -> <target>` lines with a REQUIRED timeout handler that
-  must be a declared transition [R-fsm-deadline]; the lifecycle machine
-  declares LAST-CALL's expiry default (silence-default publish). Deadline
-  instants resolve to one unambiguous second: bare date = midnight UTC,
-  date with zone offset = midnight in that zone, canonical form
-  YYYY-MM-DDTHH:MM:SSZ.
-- 2026-08-14: corpus state made a declaration, not a discovery — drafts
-  carry a visible `**Corpus:** green|red` indicator (absent = green),
-  `rfc-run --expect` verifies it in both directions, and CI gates drafts
-  on the declaration so working evidence cannot rot silently until the
-  publication gate. [R-corpus-declared]
-- 2026-08-14: fsm notation given its ABNF (the process eating its own
-  doctrine — syntax defined by a document is expressed in ABNF with
-  witnesses) [R-fsm-grammar], covering the deadline extension and instant
-  forms.
-- 2026-08-14: commit discipline added — an accepted decision's commit
-  message MUST be Conventional Commits v1.0.0 [R-commit-conventional]
-  with human-only attribution unless the repository requires LLM
-  disclosure [R-commit-attribution] (deterministic, rfc-commit-lint);
-  a two-key read — a fresh-context LLM with the changeset, then the
-  human — confirms the message narrates what happened, not the hunks.
-- 2026-08-14: hyphenated authors made expressible without ambiguity —
-  a hyphen-bearing author token separates from the slug with a double
-  hyphen (draft-prime-agent--review-00.md); slugs never contain "--";
-  every name parses one way. Chosen over constraining authors to
-  hyphen-free tokens (silent misparse risk) and a registered-author list
-  (reintroduces coordination).
-- 2026-08-14: external-review fixes — the state name timeout is reserved
-  in the fsm vocabulary (it shadowed the executor's pseudo-target,
-  making a declared transition unreachable); the transcript-runner PATH
-  provision is documented as a general contract rather than a
-  this-document addition; rfc-commit-lint's attribution scan anchors to
-  trailer position in the final paragraph, so body prose mentioning the
-  words is never a false positive.
-- 2026-08-14: multiline commands made human-readable — the transcript
-  vocabulary gains PS2 continuation (`> ` lines join the preceding
-  command with their newlines preserved, executing at the first
-  non-continuation line), heredocs become the RECOMMENDED provisioning
-  form over escape-laden one-line printf, `> `-prefixed heredoc lines
-  shield nested evidence fences, and the `$ ` output limit extends to
-  `> `. The tangle exemplar is rewritten in the new form as its witness.
-- 2026-08-14: cross-repository machinery adopted by reference
-  (draft-ndn-cross-repo-00): the repo identity profile coexists with
-  author-scoped names, and draft-named SUPERSEDED is legalized solely as
-  the cross-repo forwarding pointer.
-- 2026-08-14: feedback registration adopted by reference
-  (draft-ndn-feedback-registration-00): the consensus table gains the
-  OPTIONAL reviewed-at revision anchor, three transport profiles carry
-  dispositions into the record, and registration outlives publication
-  via the series concerns ledger.
-- 2026-08-14: guarded transitions added to the fsm vocabulary — `guard
-  <from> -> <to>: <key>...` withholds an edge until the named evidence
-  keys are attached to the FROM state's run record [R-fsm-guard]; the
-  grammar gains the production, and guards stay engine-free (evidence
-  requirements, not hooks).
-- 2026-08-20: invocation isolation added as a general rule
-  [R-logical-state-path]: a path a document gives for machine state is
-  logical, and each invocation gets its own physical location behind it.
-  This existed only as two specific statements — a sandbox MUST in
-  draft-ndn-sandbox-providers-00 and unevidenced prose about concurrent
-  session files in draft-ndn-fsm-session-00 — so a third execution
-  surface would have had to rediscover it. It was rediscovered: a shared
-  physical sandbox at a fixed path produced a stale lock that failed
-  every later corpus run with a false negative, and cost one agent an
-  afternoon and a wrong root cause before the shared path was identified
-  as the defect rather than the platform. The witness nests one
-  execution inside another, and fails against the pre-fix shared-sandbox
-  implementation, so it is falsifiable rather than tautological.
-- 2026-08-25: the sandbox now redirects every XDG base directory, not
-  `XDG_CONFIG_HOME` alone [R-sandbox-env]. Found by replaying a transcript
-  that ran a subject using the XDG data directory: it created a real store
-  in the runner's own `~/.local/share`, because XDG variables are consulted
-  before the `HOME` fallback and only the config one was redirected. The
-  evidence contract had been asserting hermetic execution it did not
-  deliver, silently, in every corpus in the series.
-- 2026-09-01: body reshaped on NLSpec's precision devices
-  (draft-claude-nlspec-conventions-00). A layering statement and named
-  principles open the Specification; the transcript notation and the
-  sandbox provisions become tables (the sandbox table a witness of
-  [R-sandbox-env]); the masthead becomes an attribute table with
-  defaults whose value sets are lint-proven [R-masthead]; the status
-  vocabulary gains a consequence table as a witness of [R-status-vocab];
-  an Out of Scope section names each exclusion's extension point;
-  Alternatives Considered entries take the question form naming the
-  rejected alternative; and Appendix A catalogues every rfc-lint
-  diagnostic with its recovery — the strings the corpus already greps
-  for, made a stable surface. No lifecycle or evidence rule changed.
 
 ## Appendix A: rfc-lint diagnostics
 
@@ -1074,7 +914,8 @@ the recovery. An ERROR fails the gate; a WARNING is a review finding.
 | invalid status | ERROR | Use one of the seven statuses |
 | numbered RFCs are published by definition | ERROR | A numbered file carries PUBLISHED, SUPERSEDED, or HISTORIC; unpublished work is a draft |
 | publishing assigns the number | ERROR | Rename to NNNN-slug.md and add the index entry, or use a draft status |
-| LAST-CALL requires a Changelog deadline 'objections by …' | ERROR | Add the Changelog entry with a second-resolution instant |
+| LAST-CALL requires a masthead deadline '**Objections-By:** …' | ERROR | Add the masthead header with a second-resolution instant |
+| Objections-By is LAST-CALL state — … remove it when leaving the state | ERROR | An outbound transition removes the header along with the status change |
 | LAST-CALL requires a consensus table | ERROR | Add the reviewer/disposition table naming every reviewer |
 | concerns line malformed | ERROR | Rewrite as name, sha, reviewer, then registered / addressed / withdrawn |
 | Corpus must be 'green' or 'red' | ERROR | Fix the declaration |

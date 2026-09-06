@@ -3,7 +3,6 @@
 **Status:** DRAFT
 **Category:** Experimental
 **Authors:** Norman Nunley, Jr <nnunley@gmail.com>, Claude (drafting agent)
-**Date:** 2026-08-14
 
 ## Abstract
 
@@ -45,8 +44,9 @@ when, and only when, they appear in all capitals, as shown here.
 ### The projection
 
 The digest MUST contain: the title line; the `Status`, `Category`,
-`Corpus`, and supersession-relation masthead lines with bold markup
-stripped; every kept-section paragraph bearing an `[R-]` marker, whole;
+`Corpus`, `Objections-By`, and supersession-relation masthead lines
+with bold markup stripped — publication state travels whole, so a
+LAST-CALL digest always shows its deadline; every kept-section paragraph bearing an `[R-]` marker, whole;
 sentences bearing BCP 14 keywords from other kept-section paragraphs;
 `abnf` and `fsm` blocks verbatim; and evidence tables. The digest MUST
 NOT contain: dropped sections, the BCP 14 boilerplate, authorship and
@@ -54,8 +54,10 @@ date lines, evidence transcript blocks, or section headers with no
 surviving content. [R-digest-shape]
 
 ```transcript @R-digest-shape
-$ printf '# draft-a-x-00: X\n\n**Status:** DRAFT\n**Authors:** A B\n\n## Motivation\n\nProse only here.\n\n## Specification\n\nIt MUST work. [R-alpha]\n\nPlain unmarked prose.\n\n\140\140\140transcript @R-alpha\n$ true\n\140\140\140\n\n## Changelog\n\n- added [R-alpha]\n' > d.md
-$ rfc-render-llm d.md | grep -c "Status: DRAFT"
+$ printf '# draft-a-x-00: X\n\n**Status:** LAST-CALL\n**Objections-By:** 2026-09-09\n**Authors:** A B\n\n## Motivation\n\nProse only here.\n\n## Specification\n\nIt MUST work. [R-alpha]\n\nPlain unmarked prose.\n\n\140\140\140transcript @R-alpha\n$ true\n\140\140\140\n\n## Changelog\n\n- added [R-alpha]\n' > d.md
+$ rfc-render-llm d.md | grep -c "Status: LAST-CALL"
+1
+$ rfc-render-llm d.md | grep -c "Objections-By: 2026-09-09"
 1
 $ rfc-render-llm d.md | grep -c "R-alpha"
 1
@@ -173,13 +175,3 @@ detectable by `--verify` against the source.
 - draft-ndn-evidence-adapters-00 — the deterministic-runner doctrine the
   verify mode follows.
 
-## Changelog
-
-- 2026-08-14: draft-00 created with the projector and verify mode
-  implemented against it; all six series documents pass `--verify`,
-  establishing the live-corpus-as-test-suite practice.
-- 2026-08-14: external-review fixes — verify gains the two invariants
-  the review demonstrated missing (keyword-sentence survival via the
-  generator's own sentence algorithm, and verbatim evidence-table-row
-  survival), and the keyword matcher takes MAY at a word boundary so a
-  sentence-final "MAY." is no longer dropped.

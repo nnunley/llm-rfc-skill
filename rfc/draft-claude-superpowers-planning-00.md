@@ -3,7 +3,6 @@
 **Status:** DRAFT
 **Category:** Informational
 **Authors:** Claude (drafting agent), Norman Nunley, Jr <nnunley@gmail.com>
-**Date:** 2026-08-14
 
 ## Abstract
 
@@ -258,7 +257,7 @@ architecture, constraints, rationale, and alternatives — the exact components
 of an RFC Specification section. A design document can be promoted to a draft
 RFC by adding the standard RFC structure (Abstract, Motivation, Terminology,
 Formal Grammar if syntax is defined, Security Considerations, References,
-Changelog, embedded evidence).
+embedded evidence).
 
 **Writing-plans' task decomposition** takes the approved design and produces
 implementation work. Each task in the plan can be annotated with the RFC
@@ -391,19 +390,3 @@ the source of truth for what was built.
 - RFC 2026, RFC 6410 (process, categories); RFC 7322 (style); BCP 14 = RFC
   2119 + RFC 8174.
 
-## Changelog
-
-- 2026-08-14: draft-00 created. Documented the superpowers planning pipeline
-  as a unified workflow spanning brainstorming (discovery), writing-plans (task
-  decomposition), and executing-plans/subagent-driven-development (execution).
-  FSM blocks derived from each skill's documented flow. Relation to RFC process
-  documented: design docs map to draft RFCs, tasks can cite RFC requirement
-  IDs, execution reviews and ledgers complement RFC evidence blocks.
-  Security considerations address plan-directed execution, subagent trust,
-  prompt injection, and session recovery. Alternatives considered: three
-  separate RFCs (rejected; pipeline requires cross-referencing), normative
-  BCP (rejected; Informational better fits documented practice), project docs
-  (rejected; RFC durability and citeability matter), layered feedback (rejected;
-  one-way flow with upgrade-at-discovery is sufficient). No embedded evidence:
-  this is an Informational record of existing superpowers practices, not a
-  normative specification with testable requirements.

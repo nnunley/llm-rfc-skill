@@ -3,7 +3,6 @@
 **Status:** DRAFT
 **Category:** Experimental
 **Authors:** Claude (drafting agent), Norman Nunley, Jr <nnunley@gmail.com>
-**Date:** 2026-08-21
 
 ## Abstract
 
@@ -472,12 +471,3 @@ The `order` and `groom` adapters are unchanged, as are the evidence keys
   same decay in code that this document resists in the backlog.
 - RFC 5234 (ABNF), RFC 2119, RFC 8174 (BCP 14), RFC 3339 (dates).
 
-## Changelog
-
-- 2026-08-21: DRAFT created, absorbing draft-claude-xp-backlog-00 and
-  draft-claude-xp-backlog-00. The two were always one derivation over one
-  file — what we want, what still serves it, what we can build next — and
-  splitting them produced two documents that could only be understood
-  together. Requirement IDs carried forward; four IDs folded into two.
-  Ordering is restated as composing with prime-radiant's project-scale
-  walking skeleton rather than competing with it.

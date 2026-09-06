@@ -3,7 +3,6 @@
 **Status:** DRAFT
 **Category:** Informational
 **Authors:** Claude (drafting agent), Norman Nunley, Jr <nnunley@gmail.com>
-**Date:** 2026-08-14
 
 ## Abstract
 
@@ -195,10 +194,3 @@ and quality. No credentials, secrets, or PII are extracted or stored in findings
   same-prompt PAR.
 - RFC 2119, RFC 8174 (BCP 14) — Requirement language conventions.
 
-## Changelog
-
-- 2026-08-14: draft-00 created, documenting PAAD's agentic-architecture process
-  (commit 149926aa231e, v1.11.0). Covers four-phase lifecycle: reconnaissance,
-  specialist dispatch across five architectural domains, verification gate for
-  false-positive filtering and confidence validation, and consolidated reporting
-  with evidence anchoring. Includes process FSM and security/alternative considerations.

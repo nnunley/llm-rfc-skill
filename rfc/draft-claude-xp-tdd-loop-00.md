@@ -3,7 +3,6 @@
 **Status:** DRAFT
 **Category:** Experimental
 **Authors:** Claude (drafting agent), Norman Nunley, Jr <nnunley@gmail.com>
-**Date:** 2026-08-19
 
 ## Abstract
 
@@ -360,17 +359,3 @@ behavior: the pair sets up a runner first, as its own story.
   treatment, which this document guards rather than describes.
 - RFC 2119, RFC 8174 (BCP 14) — requirement language.
 
-## Changelog
-
-- 2026-08-21: SPLIT_NEEDED added as a third terminal. The parent machine
-  had an edge to STORY_SPLIT that no terminal of this machine could reach,
-  so the outcome "this story is too big" was expressible at session scale
-  and unreachable from inside the loop. Found by compiling the two machines
-  together; neither document showed it alone.
-- 2026-08-19: DRAFT created as the loop delegated from
-  draft-claude-xp-pairing-00's LOOP stage. Guards red-before-green on an
-  observed failure, green-to-refactor on an observed pass within the
-  increment bound, and loop completion on navigator sign-off against the
-  diff. Surprising red outcomes route to a terminal halt rather than being
-  edited to green, and defects enter as stories whose RED test is the
-  reproduction.

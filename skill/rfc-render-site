@@ -117,6 +117,30 @@ await mermaid.run({ querySelector: "pre.mermaid" });
 import html, re, subprocess, tempfile, os, pathlib
 
 RFC_DIR = os.path.abspath(sys.argv[1])
+
+def _git(*args):
+    try:
+        r = subprocess.run(["git",*args], cwd=RFC_DIR, capture_output=True, text=True, timeout=30)
+        return r.stdout.strip() if r.returncode == 0 else ""
+    except Exception:
+        return ""
+
+# Provenance is derived, never authored: each entry carries the commit it
+# comes from, and the page records the series revision it was generated
+# from. A shallow clone cannot prove per-file history, so the per-file
+# span is omitted there rather than fabricated — the generation SHA is
+# still exact.
+SHALLOW = _git("rev-parse","--is-shallow-repository") == "true"
+HEAD_SHA = _git("log","-1","--format=%h")
+HEAD_DATE = _git("log","-1","--format=%as")
+
+def git_dates(name):
+    if SHALLOW: return None, None, None, None
+    out = _git("log","--follow","--format=%h %as","--",f"{name}.md")
+    rows = [l.split() for l in out.splitlines() if l.strip()]
+    if not rows: return None, None, None, None
+    (u_sha,u_date),(c_sha,c_date) = rows[0], rows[-1]
+    return c_date, c_sha, u_date, u_sha
 OUT = os.path.abspath(sys.argv[2])
 EMBED = "--embed" in sys.argv[3:]
 MULTI = not EMBED and not OUT.endswith(".html")
@@ -222,6 +246,11 @@ def render_doc(name):
             out.append(f'<div><dt>{mm.group(1)}</dt><dd>{il(mm.group(2))}</dd></div>')
             i += 1
             if not re.match(r'\*\*([A-Za-z-]+):\*\* ', lines[i] if i < len(lines) else ""):
+                c_date, c_sha, u_date, u_sha = git_dates(name)
+                if c_date: out.append(f'<div><dt>Created</dt><dd>{c_date} <code>{c_sha}</code></dd></div>')
+                if u_date and (u_date, u_sha) != (c_date, c_sha):
+                    out.append(f'<div><dt>Updated</dt><dd>{u_date} <code>{u_sha}</code></dd></div>')
+                if HEAD_SHA: out.append(f'<div><dt>Rendered-From</dt><dd><code>{HEAD_SHA}</code> {HEAD_DATE}</dd></div>')
                 out.append('</dl>'); in_masthead = False
             continue
         if ln.startswith("## "):

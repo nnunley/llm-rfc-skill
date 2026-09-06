@@ -3,7 +3,6 @@
 **Status:** DRAFT
 **Category:** Experimental
 **Authors:** Claude (drafting agent), Norman Nunley, Jr <nnunley@gmail.com>
-**Date:** 2026-08-14
 
 ## Abstract
 
@@ -93,7 +92,7 @@ note CONSOLIDATION: union of findings — severity = worst assigned — duplicat
 note ADJUDICATION: validate each claim against the artifact — unsubstantiated claims are dropped, never presented
 note PRESENTATION: one adjudicated finding at a time, severity order — the author may stop at any point
 note REVIEW_LOOP: record the disposition, then next finding, re-review, or resolve
-note RESOLUTION: decisions recorded in the Changelog
+note RESOLUTION: decisions recorded in commit messages
 ```
 
 ### The Per-Reviewer Phase Protocol
@@ -173,9 +172,10 @@ severity order: state the problem, offer concrete options best to worst
 with a recommendation, and wait for the author's response before the
 next finding. The author can say "good enough" or "stop" at any point.
 
-For each addressed finding, record the author's decision in the draft's
-Changelog — a durable record of what was reviewed, what was dropped in
-adjudication and why, and what the author chose to do.
+For each addressed finding, record the author's decision in the commit
+that addresses it — the commit log is the durable record of what was
+reviewed, what was dropped in adjudication and why, and what the author
+chose to do.
 
 ### Placement in the RFC Lifecycle
 
@@ -218,26 +218,3 @@ Rejected. Documenting adversarial review as an informational technique (e.g., in
 - RFC 7282, "On Consensus and Humming in the IETF" — adversarial review is one instrument in the consensus-building process; rough consensus and running code remain the arbiter.
 - RFC 2026, RFC 6410 — RFC categories and process maturity stages; Experimental category permits provisional adoption of new practices.
 
-## Changelog
-
-- 2026-08-14: draft-00 created. Codified adversarial review protocol as adoptable practice (discovery instrument for RFC drafting, distinct from deterministic conformance verification). Specified phases: reality check (upfront showstopper detection), scope shape (cohesion and size), detailed findings (six categories ranked by severity), one-at-a-time presentation with options, resolution recorded in Changelog. Placed in lifecycle: MUST complete before LAST-CALL; SHOULD complete for fast-track. Clarified discovery/conformance doctrine: agent judgment is discovery; determinism is conformance; both required; neither substitutes; LLMs never sit in verification loop. Derived from PAAD (Curtis "Ovid" Poe, v1.11.0), pushback skill. Field evidence: protocol ran twice on RFC drafts 2026-08-14, surfaced critical findings each time (non-replayable evidence syntax; unspecified state transitions). Specified FSM for protocol phases with realistic state transitions (loop-back for continue, early-stop, restart-on-split, terminal done). Addressed security (reviewer access to sensitive repository content; bad-faith findings). Rejected alternatives: direct BCP amendment (practices join as RFCs, promoted by decision) and review-as-documentation (provides guidance but no machinery). Experimental status: provisional adoption pending evidence at scale; future decision will promote to BCP if durable.
-- 2026-08-14: restructured on review — the review loop separated from
-  the PAAD-derived phase protocol, which is one reviewer's tool inside
-  it. The loop machine gains CONSOLIDATION (union, worst
-  severity) and ADJUDICATION (per-claim validation by a fresh-context
-  adjudicator; unsubstantiated claims dropped and logged) between the
-  parallel reviewers and the author; the per-reviewer machine ends at
-  REPORT and never presents. Both machines carry stage notes for the
-  executor.
-- 2026-08-14: attribution corrected on author review — PAAD is a
-  collection of processes, not one protocol: pushback sources the
-  per-reviewer phase protocol, and the agentic-review subskill (parallel
-  specialists, verification filtering false positives) is prior art for
-  the loop's verification stage.
-- 2026-08-14: second correction on author review — PAR and specialist
-  dispatch are DIFFERENT parallelism designs, previously conflated: PAR
-  (Jesse Vincent, prime-radiant) dispatches the SAME prompt and reads
-  redundant agreement as confidence; PAAD's agentic-* skills dispatch
-  DIFFERENT specialized prompts and buy reach through diversity. The
-  review loop now names both as intake-selectable dispatch forms with
-  form-dependent duplicate semantics in consolidation.

@@ -3,13 +3,12 @@
 **Status:** DRAFT
 **Category:** BCP
 **Authors:** Norman Nunley, Jr <nnunley@gmail.com>, Claude (drafting agent)
-**Date:** 2026-08-14
 
 ## Abstract
 
 How feedback on an RFC is given and received: deliberate anywhere,
 register in the artifact. The only registration with standing is the
-committed consensus-table row (with its Changelog line); three transport
+committed consensus-table row; three transport
 profiles — pull request, issue, and conversational — differ only in
 where the evidence of assent lives. This process exists inside revision
 control and leans on it deliberately: a disposition is anchored to the
@@ -36,8 +35,8 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD",
 document are to be interpreted as described in BCP 14 (RFC 2119, RFC 8174)
 when, and only when, they appear in all capitals, as shown here.
 
-- **registration** — a committed consensus-table row (plus its Changelog
-  line); the only feedback with standing.
+- **registration** — a committed consensus-table row; the only feedback
+  with standing.
 - **disposition** — a reviewer's registered position: `pending`,
   `consent`, or `concern: <text>`.
 - **reviewed-at** — the SHA of the draft revision a disposition was
@@ -53,7 +52,7 @@ when, and only when, they appear in all capitals, as shown here.
 
 Deliberation MAY happen anywhere — a conversation, an issue, a pull
 request, a hallway. Standing lives in exactly one place: the committed
-consensus-table row and its Changelog line. Unregistered feedback has no
+consensus-table row and the masthead deadline. Unregistered feedback has no
 standing at adjudication, symmetrically with the silence default —
 objections are recorded, never inferred from threads. [R-registration]
 
@@ -61,8 +60,7 @@ objections are recorded, never inferred from threads. [R-registration]
 $ cat > draft-a-x-00.md <<'EOF'
 > # draft-a-x-00: X
 > **Status:** LAST-CALL
-> ## Changelog
-> - objections by 2026-08-21T17:00:00Z
+> **Objections-By:** 2026-08-21T17:00:00Z
 > | reviewer | disposition |
 > |---|---|
 > | alice | maybe later |
@@ -91,8 +89,7 @@ adjudicator's, made with the diff in hand. [R-reviewed-at]
 $ cat > draft-a-x-00.md <<'EOF'
 > # draft-a-x-00: X
 > **Status:** LAST-CALL
-> ## Changelog
-> - objections by 2026-08-21T17:00:00Z
+> **Objections-By:** 2026-08-21T17:00:00Z
 > | reviewer | disposition | reviewed-at |
 > |---|---|---|
 > | alice | consent | 6571eaeb |
@@ -103,8 +100,7 @@ $ rfc-lint draft-a-x-00.md 2>&1 | grep -c "reviewed-at"
 $ cat > draft-a-y-00.md <<'EOF'
 > # draft-a-y-00: Y
 > **Status:** LAST-CALL
-> ## Changelog
-> - objections by 2026-08-21T17:00:00Z
+> **Objections-By:** 2026-08-21T17:00:00Z
 > | reviewer | disposition | reviewed-at |
 > |---|---|---|
 > | bob | consent | not-a-sha |
@@ -203,7 +199,7 @@ $ rfc-lint draft-a-x-00.md 2>&1 | grep -c "concerns line malformed"
 ### Adjudication
 
 Deadline adjudication is forge-free: the record is the table state and
-the git history at the `objections by` instant — nothing on any forge is
+the git history at the `Objections-By:` instant — nothing on any forge is
 consulted to determine standing. Pending reads as consent (silence
 default); standing concerns block; the adjudicating human reads each
 consent's reviewed-at delta and judges substance.
@@ -270,15 +266,3 @@ reviewer identifiers already public in the series' history.
 - rfcbot (Rust) — registered dispositions as the consensus record; the
   lineage of the consensus table this document extends.
 
-## Changelog
-
-- 2026-08-14: draft-00 created from the interview record (transports,
-  registration-only standing, conversational scaling boundary,
-  citation-sufficient transcription, git-issue-preferred issue substrate,
-  post-publication registration chosen over full-track-only) and the
-  revision-control adaptation: dispositions anchor to reviewed-at SHAs,
-  in-band state shrinks to what a deterministic check reads, git history
-  carries provenance, and automated staleness is deliberately left to
-  the adjudicator's diff. Deviation from the reviewed shape: no
-  `Updates:` header while the process BCP is itself a draft — adoption
-  is by reference until both publish.

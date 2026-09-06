@@ -3,7 +3,6 @@
 **Status:** DRAFT  
 **Category:** Informational  
 **Authors:** Claude (drafting agent), Norman Nunley, Jr <nnunley@gmail.com>  
-**Date:** 2026-08-14
 
 ## Abstract
 
@@ -103,6 +102,3 @@ Alignment checking does not execute code; it analyzes documents. The sole risky 
 - draft-claude-adversarial-review-00 — Parallel reviewer patterns for scope and design audits
 - RFC 2119, RFC 8174 (BCP 14) — Requirement language conventions
 
-## Changelog
-
-- **2026-08-14**: draft-00 created incorporating PAAD's alignment-check process. Specifies four-phase lifecycle (reality check, analysis, issue presentation, resolution), design-document coverage checking, dependency-ordered issue presentation, mandatory TDD red/green/refactor rewrite. Pinned to PAAD v1.11.0 at commit 149926aa231e. Relates alignment checking to RFC series' plan-breakdown rule as equivalent coverage discipline for project scope.

@@ -2,7 +2,7 @@
 # rfc-render-llm — project an RFC to a token-minimal digest for LLM context.
 # Usage: rfc-render-llm <rfc.md>...
 # Deterministic projection keeping ONLY the normative surface: identity,
-# Status/Category/Corpus, [R-]-marked requirement paragraphs, keyword
+# Status/Category/Corpus/Objections-By, [R-]-marked requirement paragraphs, keyword
 # sentences, ABNF and fsm blocks verbatim, witness tables. Everything
 # discursive is dropped — Abstract, Motivation, Alternatives, References,
 # Changelog, the BCP 14 boilerplate, evidence transcripts, authorship —
@@ -152,7 +152,7 @@ for f in "$@"; do
 
         # --- masthead + title (identity and state only, markup stripped) ---
         /^# /                 { print; next }
-        /^\*\*(Status|Category|Corpus|Obsoletes|Updates|Superseded-By):\*\* / { if (!body) { gsub(/\*\*/, ""); print; next } }
+        /^\*\*(Status|Category|Corpus|Objections-By|Obsoletes|Updates|Superseded-By):\*\* / { if (!body) { gsub(/\*\*/, ""); print; next } }
         /^\*\*[A-Za-z-]+:\*\* / { if (!body) next }
 
         # --- section tracking; discursive sections dropped wholesale ---

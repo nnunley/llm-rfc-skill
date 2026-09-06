@@ -3,7 +3,6 @@
 **Status:** DRAFT
 **Category:** Informational
 **Authors:** Claude (drafting agent), Norman Nunley, Jr <nnunley@gmail.com>
-**Date:** 2026-08-14
 
 ## Abstract
 
@@ -167,6 +166,3 @@ Specialist agents may compose explanations from steering files; if steering file
 - **draft-claude-adversarial-review-00** — Parallel adversarial review methodology; finding aggregation and severity assignment model
 - **draft-ndn-authoring-rfcs-00** — RFC specification and authoring process; evidence structures and conformance corpus model
 
-## Changelog
-
-- 2026-08-14: draft-00 created, documenting the multi-agent accessibility audit process as implemented in PAAD's agentic-a11y skill (reviewed at commit 149926aa231e, v1.11.0). Covers pre-flight checks, reconnaissance (platform detection, tech stack ID, inventory, manifest assembly), parallel specialist dispatch (five core disabilities plus conditional platform patterns), verification phase (false-positive filtering, severity assignment), report generation with WCAG 2.2 AA/AAA conformance checklist and quick wins, and FSM modeling the overall audit lifecycle. Includes references to WCAG2ICT for non-web platform interpretation and platform-specific guideline supplements (HIG, Material Design, Xbox).

@@ -11,7 +11,8 @@ out (as adversarial review was). Other repositories run their own series
 without this one knowing.
 
 ## Published
-- 0001-nlspec-conventions — NLSpec Conventions as RFC Authoring Practice (Informational, jhugman/nlspec-derived: precision devices adopted, DoD transformed into marker ⇄ evidence, pseudocode ruled descriptive)
+
+(none yet — next number: 0001)
 
 
 ## Drafts — process and tooling
@@ -40,3 +41,4 @@ without this one knowing.
 - draft-claude-xp-backlog-00 — The Backlog Derivation (Experimental — targets, drift, aging, and dependency ordering in one derivation)
 - draft-claude-xp-drift-00 — Resisting Drift at the Gate (Experimental — structural sweep, supply-chain checks, textual slop signatures)
 - draft-claude-xp-design-00 — Metaphor, CRC Decks, and Simple Design (Experimental — delegated from xp-pairing's DESIGN stage)
+- draft-claude-nlspec-conventions-00 — NLSpec Conventions as RFC Authoring Practice (Informational, jhugman/nlspec-derived: precision devices adopted, DoD transformed into marker ⇄ evidence, pseudocode ruled descriptive; published 2026-09-01 as 0001, retracted to DRAFT 2026-09-02)

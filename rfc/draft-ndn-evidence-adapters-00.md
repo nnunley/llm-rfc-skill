@@ -3,7 +3,6 @@
 **Status:** DRAFT
 **Category:** Experimental
 **Authors:** Norman Nunley, Jr <nnunley@gmail.com>, Claude (drafting agent)
-**Date:** 2026-08-14
 
 ## Abstract
 
@@ -263,46 +262,3 @@ hygiene sandbox remains the floor, not a security boundary.
   to plain instruction lists for language-agnostic execution; the
   flow-vocabulary precedent. http://fitnesse.org/FitNesse.UserGuide.WritingAcceptanceTests.SliM
 
-## Changelog
-
-- 2026-08-14: draft-00 created from the design conversation: adapters
-  over direct shell examples, on the moot-md rationale — structured
-  representation decoupling the execution engine from the test. Evidence
-  here is deliberately red until rfc-run gains adapter dispatch
-  (spec-first; the transcripts above are the acceptance criteria).
-- 2026-08-14: clarified on review — moot's @-prefix is MOO-style command
-  idiom, not part of the adopted pattern; vocabularies use their own
-  domain's vernacular.
-- 2026-08-14: flow vocabularies recognized as the primary shape (moot
-  sessions; FitNesse SLIM script tables as the engine-decoupling
-  precedent), with optional fsm binding: a flow as a path witness walked
-  through a declared machine.
-- 2026-08-14: evidence corrected during implementation — the contract
-  transcript now self-provisions its demonstration adapter (the original
-  referenced an unprovisioned directory, caught by implementing against
-  it), asserts both verdict directions, and the resolution transcript
-  asserts the error message. Corpus green with rfc-run adapter dispatch.
-- 2026-08-14: environment ownership refined by
-  draft-ndn-sandbox-providers-00 — isolation moves to a configurable
-  provider seam; adapters keep engine mechanics (see References).
-- 2026-08-14: mdmoot provenance recovered from the conversation record
-  and cited: its line-intent annotation vocabulary with continuation
-  lines is the direct ancestor of the transcript notation family, per
-  the each-vocabulary-its-own-vernacular rule.
-- 2026-08-14: notation authorship established from mooR's own history
-  rather than recollection — git blame places the format's birth at
-  Zoltán Nagy's 2eaa9225d (2024-05-30, in mooR, not upstream of it),
-  and the annotation list is corrected against the moot README (% is
-  command, & is eval-without-output, > is moot's own continuation).
-- 2026-08-14: the worked example vocabulary renamed gi-session ->
-  demo-session — the locality rule applied to examples: a
-  project-specific vocabulary name belongs to its project's series, and
-  this document's demonstration is project-free. gi-session remains
-  cited in References as the expected first real adopter, in the
-  git-issue-tracker series.
-- 2026-08-14: fixture regression corrected on author review — a bespoke
-  bash adapter per vocabulary is FitNesse's fixture pattern re-derived,
-  which this document rejects. The generic flow runner (rfc-flow) lands
-  with vocabularies as data [R-vocab-data]; the plan-run vocabulary is
-  the first conversion (declaration file plus one-line registration),
-  and tool-native flow consumption is sanctioned as the equivalent form.

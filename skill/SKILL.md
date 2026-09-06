@@ -67,7 +67,7 @@ history. Most day-to-day decisions take this path the same day.
 one party holds a veto; it changes published normative behavior
 (`Obsoletes:`/`Updates:` a Standards-Track or BCP RFC); it crosses a
 security boundary; it standardizes across projects. Deadline stated in the
-Changelog ("objections by YYYY-MM-DD", lint-enforced) — scale the window to
+masthead (`**Objections-By:** YYYY-MM-DD`, lint-enforced) — scale the window to
 the audience (a day for a team, longer for strangers). Resolution is rough
 consensus (RFC 7282): objections addressed, not necessarily withdrawn;
 humans adjudicate when contested.
@@ -187,7 +187,7 @@ template) whenever keywords appear.
 | Status ∈ DRAFT, LAST-CALL, POSTPONED, PUBLISHED, SUPERSEDED, WITHDRAWN, HISTORIC | rfc-lint ERROR |
 | LAST-CALL carries a consensus table (pending/consent/concern) | rfc-lint ERROR |
 | Category (optional) ∈ Standards-Track, Informational, Experimental, BCP | rfc-lint ERROR |
-| LAST-CALL states "objections by YYYY-MM-DD" | rfc-lint ERROR |
+| LAST-CALL carries a masthead `**Objections-By:**` deadline | rfc-lint ERROR |
 | Updates:/Obsoletes: are 4-digit RFC numbers | rfc-lint ERROR |
 | ABNF blocks: rule syntax, undefined refs, duplicates | rfc-lint ERROR |
 | All template sections present | rfc-lint ERROR |

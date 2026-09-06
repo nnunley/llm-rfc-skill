@@ -85,12 +85,17 @@ process is about the identity and obligations of one.
 These are findings about the document as a specification, offered in the
 spirit its own §6.2 asks for.
 
-- **§16 violates §4.** The Out of Scope rule demands a four-part entry
-  ending in an extension point. Of NLSpec's four Out of Scope items,
-  only the first (authoring tooling → the §18 smoke test) names one.
-  Requirement gathering, system decomposition, and version control end
-  at "outside format specification" — exactly the "sounds permanently
-  excluded" failure §4 warns against.
+- **§16's items stop at part 3 of §4's structure** — *finding downgraded
+  2026-09-02*: the original review called this a rule violation. The
+  fairer reading (Norman's): §4 explicitly sanctions layering as an
+  exclusion justification, and "These are workflow concerns" names the
+  owning layer — a **permissive** extension convention, where any
+  project brings its own workflow to the seam, rather than a missing
+  extension point. What remains true: the HOW of part 4 is implicit,
+  and the seam carries no registered offer. This series now registers
+  one there — see "Supplying NLSpec's open seams" in the draft (the
+  premature publication as RFC 0001 was retracted to DRAFT, so the
+  correction landed in place).
 - **The validator omits a mandated section.** §5 says an NLSpec
   *collects* design justifications in a dedicated section or appendix;
   the §18.15 `validate_nlspec` pseudocode checks for TOC, opening
@@ -162,7 +167,7 @@ Done in this change:
    Errors (table with Recovery; escape hatches marked non-portable);
    `## Out of Scope` with the four-part entry; Alternatives Considered
    in bold-question form; temporal anchors under Compatibility;
-   appendices after the Changelog; an explicit "no Definition of Done —
+   appendices after References; an explicit "no Definition of Done —
    the digest is the checklist" note. `SKILL.md` step 4 summarizes the
    shape.
 4. **BCP body** (`draft-ndn-authoring-rfcs-00`) reshaped, no rule

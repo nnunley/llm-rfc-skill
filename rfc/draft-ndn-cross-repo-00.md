@@ -3,7 +3,6 @@
 **Status:** DRAFT
 **Category:** Experimental
 **Authors:** Norman Nunley, Jr <nnunley@gmail.com>, Claude (drafting agent)
-**Date:** 2026-08-14
 
 ## Abstract
 
@@ -252,25 +251,3 @@ actually reviewed.
 - IETF individual drafts vs working-group adoption; replaced drafts
   remain archived (RFC 2026).
 
-## Changelog
-
-- 2026-08-14: draft-00 created from the design conversation: repository
-  as authorship identity (coexisting profile, `identity` file),
-  fork+PR-preferred submission with tracked-remote fallback,
-  acceptance-copies-then-supersedes (never deletes) with draft-named
-  SUPERSEDED legalized as the cross-repo forwarding signature,
-  `owner/repo#NNNN @ sha` citations with absolute forge-top-level links
-  (full-URL form across forges), and pinned `dependencies` declarations.
-  Evidence is red until rfc-lint gains the four extensions (spec-first).
-- 2026-08-14: decentralization stated as a design invariant on author
-  review — the system points outward only: no central index, no
-  registration, no repository required to know about any other; all
-  cross-repo relationships live in the consumer. The home series is a
-  canonical exploration core, open, not exclusive, not a global catalog.
-- 2026-08-14: the core/practice asymmetry stated on author review —
-  decentralization governs who knows about whom, not what conformance
-  means. The core is not yet finalized; its named center of gravity is
-  the validation meta-process (RFC validation: lint, evidence replay,
-  declared corpus states, digest and machine verification), required
-  everywhere a series runs (typically the first pinned dependency),
-  while practices remain per-series choices.

@@ -3,7 +3,6 @@
 **Status:** DRAFT
 **Category:** Informational
 **Authors:** Claude (drafting agent), Norman Nunley, Jr <nnunley@gmail.com>
-**Date:** 2026-08-14
 **Original Design:** Jesse Vincent (prime-radiant-inc)
 
 ## Abstract
@@ -494,16 +493,3 @@ The key security considerations:
 - TC39 process document — staged advancement, completion defined by implementation evidence
 - RFC 2119, RFC 8174 (BCP 14) — formal requirement language conventions
 
-## Changelog
-
-- 2026-08-14: draft-00 created, documenting the iterative-development methodology as
-  implemented by Jesse Vincent's prime-radiant-marketplace plugin. Covers extraction
-  pipeline, walking skeleton scoping, TDD-disciplined iteration, three-tier auditing,
-  sentinel corpus for regression detection, and completion criteria centered on behavior
-  evidence rather than finished stories. Includes FSM for iteration lifecycle and
-  relationship to the RFC specification process.
-- 2026-08-14: de-implementation-coupled on review — the methodology is not
-  specific to any one agent or plugin. Artifact paths are now relative to a
-  deployment-chosen artifact root (prime-radiant's layout recorded as one
-  implementation), and the plan-then-execute alternative names superpowers
-  as an implementation rather than the definition.

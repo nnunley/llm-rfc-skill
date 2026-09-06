@@ -3,7 +3,6 @@
 **Status:** DRAFT
 **Category:** Experimental
 **Authors:** Claude (drafting agent), Norman Nunley, Jr <nnunley@gmail.com>
-**Date:** 2026-08-19
 
 ## Abstract
 
@@ -520,67 +519,3 @@ rather than derived from a prior record.
   corpus rule the integration guard mirrors.
 - RFC 2119, RFC 8174 (BCP 14) — requirement language.
 
-## Changelog
-
-- 2026-08-19: DRAFT created. Converts the twenty-nine XP rules for a pair of
-  one human and one agent (or two agents with a human customer), as an
-  executable session machine with hard guards on story contract, pair
-  composition, increment bound, and whole-suite integration. Rule
-  dispositions recorded in full: seventeen translated here, eight delegated
-  to child documents, four rejected. Per-story pair composition and
-  fresh-context agent navigators follow from the author's requirement that
-  the co-driver is sometimes another agent and that feedback is continuous
-  over a visible stream.
-- 2026-08-21: two unhandled subprocess returns fixed. DESIGN had one
-  outgoing edge but draft-claude-xp-design-00 has two terminals, so a
-  session reaching DESIGN_ABANDON was stranded — the only legal move was
-  guarded on a deck an abandoned design does not have. LOOP looked correct
-  on arity and was not: HALT would have had to return through STORY_SPLIT,
-  which is guarded on overrun, and a halt is not an overrun. Found by
-  comparing child terminals against parent edges, which is the check a
-  compiled global machine would make automatically.
-- 2026-08-21: `sweep` and `deps` collapse into one `drift` guard key,
-  following the consolidation of their three documents into
-  draft-claude-xp-drift-00.
-- 2026-08-21: three integration defects fixed against
-  draft-claude-iterative-development-00 (Jesse Vincent / prime-radiant).
-  "The session is the iteration" collided directly with `ITER-NNNN`:
-  iterations are project scale and a session runs inside one. Acceptance
-  criteria and proof obligations are now linked rather than competing — the
-  criterion says what, the obligation says at which seam it is witnessed.
-  SESSION_START's briefing surveys outstanding effort (iteration, issue
-  queue, cross-agent ledger), because a session begins with the human's
-  current priority and that priority needs context to be exercised well.
-- 2026-08-20: `deps` added to both INTEGRATE guards, consuming
-  draft-claude-xp-drift-00 — a hallucinated package is the one form
-  of accretion that is directly exploitable.
-- 2026-08-20: `sweep` added to both INTEGRATE guards, consuming
-  draft-claude-xp-drift-00. Until now every guard in this document
-  constrained what entered the codebase and none forced anything out, so a
-  project could satisfy all of them and still grow without bound; the
-  sweep is the missing direction.
-- 2026-08-20: `groom` added to the SESSION_START guard, consuming
-  draft-claude-xp-backlog-00 — a session cannot open without the pair
-  having seen what drifted from current targets, what target nothing
-  serves, and what has aged.
-- 2026-08-20: the increment bound became a STANDING system constant
-  attached at SESSION_START instead of a per-story declaration, and
-  per-story size estimates are now forbidden outright. Rationale from the
-  author: sizing estimates converge on the same size for everything, so the
-  only information they carry is that an oversized story should be split —
-  which the standing bound signals directly. `bound` left the STORY_SELECT
-  guard for the SESSION_START guard.
-- 2026-08-19: `order` added to the STORY_SELECT guard, consuming the
-  derivation of draft-claude-xp-backlog-00 — the ordering question the
-  rejected planning ceremony used to answer is now computed from the deck.
-- 2026-08-19: planning-game delegation dropped and the velocity guard
-  removed, after the author's objection to planning ceremony. User stories,
-  frequent small releases, and iterations are now translated here (the story
-  contract, the increment bound, and the session respectively); release
-  planning, iteration planning, and velocity measurement are rejected as
-  coordination machinery for parties a pair does not have. Every remaining
-  delegation now points to a written document.
-- 2026-08-19: DESIGN stage added between PAIR_DECLARE and LOOP, delegating
-  to draft-claude-xp-design-00 and guarded on a checked CRC deck. The stage
-  is optional per story (PAIR_DECLARE -> LOOP remains legal) and sits after
-  pair declaration so the navigator designs rather than reviews.

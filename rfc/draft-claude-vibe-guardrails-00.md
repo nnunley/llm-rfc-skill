@@ -3,7 +3,6 @@
 **Status:** DRAFT
 **Category:** Informational
 **Authors:** Claude (drafting agent), Norman Nunley, Jr <nnunley@gmail.com>
-**Date:** 2026-08-14
 
 ## Abstract
 
@@ -191,6 +190,3 @@ The pre-flight reusable component search may encounter sensitive components (aut
 - draft-ndn-authoring-rfcs-00 — The RFC process for human–LLM specification authoring (fast track, lightweight conformance gates)
 - RFC 2119, RFC 8174 (BCP 14) — Formal requirement language conventions
 
-## Changelog
-
-- 2026-08-14: draft-00 created, documenting the vibe process from PAAD's vibe skill (Ovid/paad at commit 149926aa231e, v1.11.0). Captures the four-step process (task understanding, pre-flight checks, red/green/refactor, post-fix summary), pre-flight gates (test infrastructure, existing tests, scope, architecture smell, reusable components), and relationship to the RFC series' lightweight-path philosophy. Includes FSM for vibe task lifecycle.
