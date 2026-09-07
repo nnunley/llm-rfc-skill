@@ -390,6 +390,7 @@ defect in the renderer, never in the fsm source. [R-fsm-render]
 $ printf 'initial A\nA -> B\nterminal B\ndeadline A -> B\nnote A: waits\n' > d.fsm
 $ rfc-fsm-render d.fsm mermaid | grep -c 'note right of A:'
 0
+? 1
 $ rfc-fsm-render d.fsm mermaid | grep -c 'end note'
 1
 $ rfc-fsm-render d.fsm mermaid | grep -c 'on timeout -> B'

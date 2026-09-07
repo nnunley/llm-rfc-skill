@@ -66,6 +66,9 @@ replay() {
     while IFS= read -r line || [ -n "$line" ]; do
         case "$line" in
             '$ '*) run_pending; flush
+                   # absent a '? N' line, the previous command's status is asserted 0
+                   [ "$last_exit" = 0 ] || { echo "EXIT $(basename "$f"): want 0 got $last_exit"; fails=1; }
+                   last_exit=0
                    pending="${line#\$ }"
                    have_pending=1 ;;
             '> '*) if [ "$have_pending" = 1 ]; then
