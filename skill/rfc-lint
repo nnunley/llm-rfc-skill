@@ -302,6 +302,7 @@ lint_file() {
             sub(/[[:space:]]*;.*$/, "", line)
             sub(/^[A-Za-z][A-Za-z0-9-]*[[:space:]]*=\/?/, "", line)
             gsub(/"[^"]*"/, " ", line)               # drop literals
+            gsub(/<[^>]*>/, " ", line)               # drop prose values (RFC 5234 §4)
             gsub(/%[sib]?[0-9A-Fa-fx.\-]*/, " ", line) # drop numeric terminals
             n = split(line, toks, /[^A-Za-z0-9-]+/)
             for (i = 1; i <= n; i++)
