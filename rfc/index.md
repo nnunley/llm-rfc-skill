@@ -26,6 +26,7 @@ without this one knowing.
 - draft-ndn-feedback-registration-00 — Feedback Registration for RFC Series (BCP)
 - draft-ndn-conformance-execution-00 — Executing Conformance: the Full Gate and Spot Tests (Experimental)
 - draft-ndn-executable-plans-00 — Executable Plans (Experimental)
+- draft-ndn-snippet-attributes-00 — Snippet Attributes: Modes, Expected Results, Variants, Chunks and Parameter Tables (Standards-Track)
 - draft-claude-adversarial-review-00 — Adversarial Spec Review (Experimental — adopted: the BCP mandates review before LAST-CALL)
 
 ## Drafts — candidate practices (external methodologies, converted for adoption)

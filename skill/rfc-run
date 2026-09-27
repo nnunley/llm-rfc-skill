@@ -206,7 +206,13 @@ for rfc in "$@"; do
     found=0
     for t in "$tangled"/*; do
         [ -e "$t" ] || continue
+        # sidecars (draft-ndn-snippet-attributes-00) travel with their block
+        case "$t" in *.attrs|*.expect|*.expect-error) continue ;; esac
         found=1
+        if [ -f "$t.attrs" ] && ! "$SKILL_DIR/rfc-snippets" when "$t.attrs" "$series_dir"; then
+            echo "N/A $(basename "$t")"
+            continue
+        fi
         type="${t##*.}"
         if ! adapter=$(resolve_adapter "$type" "$series_adapters"); then
             echo "ERROR $(basename "$t") — no adapter found for type $type"

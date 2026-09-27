@@ -106,6 +106,17 @@ into the type's native file for its runner. An evidence *type* is just a
 name plus a **runner contract**: a deterministic command that takes the
 tangled file and exits 0/1. Choose types by least indirection:
 
+- Info strings take attributes (draft-ndn-snippet-attributes-00):
+  ` ```mica @R-slug mode=eval when=impl:omica uses=setup `. `mode=` says how
+  a block runs; a following ` ```expect ` / ` ```expect-error ` block states
+  its result (matched by `rfc-expect`: literal lines, `...`, `{{regex}}`);
+  `when=` selects variants by profile facts (`RFC_PROFILE` or the series
+  `profile` file; non-matching blocks report `N/A`); `id=`/`uses=` share
+  chunks; `include=path#anchor` pulls a marked file region; and an evidence
+  table with `template=chunk` runs one case per row, filling `{{column}}`.
+  Sidecars (`.attrs`, `.expect`, `.expect-error`) sit beside each tangled
+  block. Legacy `type,flag` (rustdoc/mdBook) is read as `flags=`.
+
 - Evidence dispatches through **adapters** (draft-ndn-evidence-adapters-00):
   `rfc-run` resolves each tangled block's type via RFC_ADAPTER_PATH ->
   series-local `adapters/` -> built-ins, and the adapter owns all engine
