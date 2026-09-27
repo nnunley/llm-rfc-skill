@@ -1,0 +1,423 @@
+#!/usr/bin/env python3
+"""rfc-snippets — the one reader of fenced-block info strings (draft-ndn-snippet-attributes-00).
+
+  rfc-snippets tangle <rfc.md> <outdir>   write evidence files and sidecars; print evidence paths
+  rfc-snippets tags <rfc.md>              print every evidence slug (fences and evidence tables)
+  rfc-snippets lint <rfc.md>              print one problem per line; exit 1 if any
+  rfc-snippets when <file.attrs> [series-dir]
+                                          exit 0 if the block applies under the profile, 1 if not
+
+Info string grammar (see the draft's ABNF):
+  type *( "," flag ) *( SP ( "@R-" slug / key "=" value ) )
+"""
+import os
+import re
+import sys
+
+TYPE = r"[A-Za-z][A-Za-z0-9-]*"
+FLAG = r"[A-Za-z0-9-]+"
+SLUG = r"[a-z0-9][a-z0-9-]*"
+KEY = r"[A-Za-z][A-Za-z0-9-]*"
+BARE = r"[\x21\x23-\x5f\x61-\x7e]+"
+QUOTED = r'"[\x20\x21\x23-\x5f\x61-\x7e]*"'
+ITEM = re.compile(r"@R-(?P<slug>%s)$|(?P<key>%s)=(?P<value>%s|%s)$" % (SLUG, KEY, QUOTED, BARE))
+HEAD = re.compile(r"(?P<type>%s)(?P<flags>(?:,%s)*)$" % (TYPE, FLAG))
+EVIDENCE_COMMENT = re.compile(r"^<!-- *evidence: *@R-(%s)((?: +%s=[^ ]+)*) *-->$" % (SLUG, KEY))
+PLACEHOLDER = re.compile(r"\{\{([A-Za-z0-9_-]+)\}\}")
+RESERVED = {"mode", "when", "id", "uses", "include", "template"}
+
+
+class Problem(Exception):
+    pass
+
+
+def split_items(text):
+    """Split on spaces outside double quotes."""
+    items, cur, quoted = [], "", False
+    for ch in text:
+        if ch == '"':
+            quoted = not quoted
+        if ch == " " and not quoted:
+            if cur:
+                items.append(cur)
+            cur = ""
+        else:
+            cur += ch
+    if quoted:
+        return None
+    if cur:
+        items.append(cur)
+    return items
+
+
+def parse_info(info):
+    """Return (type, flags, slug, attrs) or None when the info string is malformed."""
+    items = split_items(info.strip())
+    if not items:
+        return None
+    head = HEAD.match(items[0])
+    if not head:
+        return None
+    flags = [f for f in head.group("flags").split(",") if f]
+    slug, attrs = None, []
+    for item in items[1:]:
+        m = ITEM.match(item)
+        if not m:
+            return None
+        if m.group("slug"):
+            if slug is not None:
+                return None
+            slug = m.group("slug")
+        else:
+            value = m.group("value")
+            if value.startswith('"'):
+                value = value[1:-1]
+            attrs.append((m.group("key"), value))
+    return head.group("type"), flags, slug, attrs
+
+
+class Block:
+    def __init__(self, line, info, parsed, body):
+        self.line, self.info, self.body = line, info, body
+        self.parsed = parsed
+        if parsed:
+            self.type, self.flags, self.slug, self.attrs = parsed
+        else:
+            self.type, self.flags, self.slug, self.attrs = None, [], None, []
+
+    def attr(self, key):
+        for k, v in self.attrs:
+            if k == key:
+                return v
+        return None
+
+    def mentions_tag_or_id(self):
+        return re.search(r"(^| )@R-", self.info) is not None or re.search(r"(^| )id=", self.info) is not None
+
+
+def read_document(path):
+    """Return (blocks, tables, lines). Tables: (line, slug, attrs, header, rows)."""
+    with open(path, encoding="utf-8") as fh:
+        lines = fh.read().split("\n")
+    blocks, tables = [], []
+    i = 0
+    while i < len(lines):
+        text = lines[i]
+        if text.startswith("```"):
+            info = text[3:]
+            start = i + 1
+            j = i + 1
+            while j < len(lines) and lines[j] != "```":
+                j += 1
+            body = "\n".join(lines[start:j]) + ("\n" if j > start else "")
+            if info.strip():
+                blocks.append(Block(i + 1, info, parse_info(info), body))
+            i = j + 1
+            continue
+        m = EVIDENCE_COMMENT.match(text)
+        if m:
+            attrs = [tuple(a.split("=", 1)) for a in m.group(2).split()]
+            j = i + 1
+            while j < len(lines) and not lines[j].strip():
+                j += 1
+            rows = []
+            while j < len(lines) and lines[j].lstrip().startswith("|"):
+                rows.append(table_cells(lines[j]))
+                j += 1
+            header = rows[0] if rows else []
+            data = [r for r in rows[1:] if not all(re.fullmatch(r":?-+:?", c.strip()) for c in r)]
+            tables.append((i + 1, m.group(1), attrs, header, data))
+            i = j
+            continue
+        i += 1
+    return blocks, tables, lines
+
+
+def table_cells(line):
+    text = line.strip()
+    if text.startswith("|"):
+        text = text[1:]
+    if text.endswith("|") and not text.endswith("\\|"):
+        text = text[:-1]
+    cells, cur, esc = [], "", False
+    for ch in text:
+        if esc:
+            cur += ch
+            esc = False
+        elif ch == "\\":
+            esc = True
+        elif ch == "|":
+            cells.append(cur.strip())
+            cur = ""
+        else:
+            cur += ch
+    cells.append(cur.strip())
+    return cells
+
+
+def unquote_cell(cell):
+    if len(cell) >= 2 and cell.startswith("`") and cell.endswith("`"):
+        return cell[1:-1]
+    return cell
+
+
+def chunks_of(blocks):
+    chunks = {}
+    for b in blocks:
+        if b.parsed and b.slug is None and b.attr("id"):
+            chunks[b.attr("id")] = b
+    return chunks
+
+
+def include_text(spec, doc_dir):
+    path, _, anchor = spec.partition("#")
+    if os.path.isabs(path):
+        raise Problem("include %s is outside the document directory" % spec)
+    root = os.path.realpath(doc_dir)
+    full = os.path.realpath(os.path.join(root, path))
+    if full != root and not full.startswith(root + os.sep):
+        raise Problem("include %s is outside the document directory" % spec)
+    try:
+        with open(full, encoding="utf-8") as fh:
+            lines = fh.read().split("\n")
+    except OSError:
+        raise Problem("include %s cannot be read" % spec)
+    if lines and lines[-1] == "":
+        lines = lines[:-1]
+    if not anchor:
+        return "".join(l + "\n" for l in lines)
+    out, inside, found = [], False, False
+    for l in lines:
+        if re.search(r"ANCHOR_END: *%s\b" % re.escape(anchor), l):
+            inside = False
+            continue
+        if re.search(r"ANCHOR: *%s\b" % re.escape(anchor), l):
+            inside, found = True, True
+            continue
+        if inside:
+            out.append(l + "\n")
+    if not found:
+        raise Problem("include %s: anchor not found" % spec)
+    return "".join(out)
+
+
+def expand(block, chunks, doc_dir, seen=()):
+    """Body with uses= chunks and include= text prepended."""
+    text = ""
+    uses = block.attr("uses")
+    if uses:
+        for name in uses.split(","):
+            if name in seen:
+                raise Problem("uses=%s forms a cycle" % name)
+            if name not in chunks:
+                raise Problem("uses=%s names no chunk" % name)
+            text += expand(chunks[name], chunks, doc_dir, seen + (name,))
+    inc = block.attr("include")
+    if inc:
+        text += include_text(inc, doc_dir)
+    return text + block.body
+
+
+def expect_pairs(blocks, lines):
+    """Map evidence block index -> its expect blocks, and list orphan expects.
+
+    An expect block pairs with the evidence block (or the expect block) right
+    before it, when only blank lines separate them."""
+    pairs, orphans = {}, []
+    owner = None
+    for idx, b in enumerate(blocks):
+        is_expect = b.parsed and b.type in ("expect", "expect-error")
+        if is_expect:
+            if owner is not None and idx > 0 and only_blank_between(lines, blocks[idx - 1], b):
+                pairs.setdefault(owner, []).append(b)
+            else:
+                orphans.append(b)
+                owner = None
+            continue
+        owner = idx if (b.parsed and b.slug) else None
+    return pairs, orphans
+
+
+def only_blank_between(lines, earlier, later):
+    """True if only blank lines lie between `earlier`'s closing fence and `later`'s opener."""
+    k = earlier.line  # index of the first body line (0-based) is earlier.line
+    while k < len(lines) and lines[k] != "```":
+        k += 1
+    return all(not t.strip() for t in lines[k + 1:later.line - 1])
+
+
+def attrs_text(attrs, flags):
+    out = "".join("%s=%s\n" % kv for kv in attrs)
+    if flags:
+        out += "flags=%s\n" % ",".join(flags)
+    return out
+
+
+def tangle(path, outdir):
+    blocks, tables, lines = read_document(path)
+    doc_dir = os.path.dirname(os.path.abspath(path))
+    base = os.path.basename(path)[:-3] if path.endswith(".md") else os.path.basename(path)
+    chunks = chunks_of(blocks)
+    pairs, orphans = expect_pairs(blocks, lines)
+    for b in orphans:
+        raise Problem("line %d: expect block does not follow an evidence block" % b.line)
+    cases = []  # (slug, type, body, attrs, flags, expects[(kind, text)])
+    for idx, b in enumerate(blocks):
+        if not b.parsed or not b.slug or b.type in ("expect", "expect-error"):
+            continue
+        expects = [(e.type, e.body) for e in pairs.get(idx, [])]
+        cases.append((b.slug, b.type, expand(b, chunks, doc_dir), b.attrs, b.flags, expects, b.line))
+    for line, slug, tattrs, header, rows in tables:
+        tmpl = dict(tattrs).get("template")
+        if not tmpl:
+            continue
+        if tmpl not in chunks:
+            raise Problem("line %d: template=%s names no chunk" % (line, tmpl))
+        chunk = chunks[tmpl]
+        body = expand(chunk, chunks, doc_dir)
+        cattrs = [(k, v) for k, v in chunk.attrs if k != "id"]
+        for row in rows:
+            values = {h: unquote_cell(row[i]) if i < len(row) else "" for i, h in enumerate(header)}
+            text = PLACEHOLDER.sub(lambda m: values.get(m.group(1), m.group(0)), body)
+            expects = [(k, values[k] + "\n") for k in ("expect", "expect-error") if k in values]
+            cases.append((slug, chunk.type, text, cattrs, chunk.flags, expects, line))
+    counts = {}
+    for slug, typ, *_ in cases:
+        counts[(slug, typ)] = counts.get((slug, typ), 0) + 1
+    seen = {}
+    os.makedirs(outdir, exist_ok=True)
+    written = []
+    for slug, typ, body, attrs, flags, expects, _ in cases:
+        key = (slug, typ)
+        if counts[key] == 1:
+            name = "%s.%s.%s" % (base, slug, typ)
+        else:
+            seen[key] = seen.get(key, 0) + 1
+            name = "%s.%s.%d.%s" % (base, slug, seen[key], typ)
+        dest = os.path.join(outdir, name)
+        with open(dest, "w", encoding="utf-8") as fh:
+            fh.write(body)
+        side = attrs_text(attrs, flags)
+        if side:
+            with open(dest + ".attrs", "w", encoding="utf-8") as fh:
+                fh.write(side)
+        for kind, text in expects:
+            with open(dest + "." + kind, "w", encoding="utf-8") as fh:
+                fh.write(text)
+        written.append(dest)
+    return written
+
+
+def tags(path):
+    blocks, tables, _ = read_document(path)
+    slugs = {b.slug for b in blocks if b.parsed and b.slug}
+    slugs |= {t[1] for t in tables}
+    return sorted(slugs)
+
+
+def lint(path):
+    problems = []
+    blocks, tables, lines = read_document(path)
+    doc_dir = os.path.dirname(os.path.abspath(path))
+    for b in blocks:
+        if not b.parsed and b.mentions_tag_or_id():
+            problems.append("line %d: malformed info string '%s'" % (b.line, b.info))
+    chunks = chunks_of(blocks)
+    for b in blocks:
+        if b.parsed and (b.slug or b.attr("id")):
+            try:
+                expand(b, chunks, doc_dir)
+            except Problem as p:
+                problems.append("line %d: %s" % (b.line, p))
+            if b.slug and not b.body.strip() and not b.attr("uses") and not b.attr("include"):
+                problems.append("evidence block @R-%s is empty" % b.slug)
+    _, orphans = expect_pairs(blocks, lines)
+    for b in orphans:
+        problems.append("line %d: expect block does not follow an evidence block" % b.line)
+    for line, slug, tattrs, header, rows in tables:
+        tmpl = dict(tattrs).get("template")
+        if not tmpl:
+            continue
+        if tmpl not in chunks:
+            problems.append("line %d: template=%s names no chunk" % (line, tmpl))
+            continue
+        try:
+            body = expand(chunks[tmpl], chunks, doc_dir)
+        except Problem:
+            continue
+        for name in sorted(set(PLACEHOLDER.findall(body))):
+            if name not in header:
+                problems.append("line %d: placeholder {{%s}} has no column in the @R-%s table" % (line, name, slug))
+    return problems
+
+
+def profile_facts(series_dir):
+    facts = {}
+    env = os.environ.get("RFC_PROFILE")
+    if env is not None:
+        for item in env.split():
+            k, _, v = item.partition("=")
+            facts[k] = v
+        return facts
+    if series_dir:
+        path = os.path.join(series_dir, "profile")
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as fh:
+                for raw in fh:
+                    line = raw.strip()
+                    if line and not line.startswith("#"):
+                        k, _, v = line.partition("=")
+                        facts[k.strip()] = v.strip()
+    return facts
+
+
+def applies(attrs_path, series_dir):
+    when = None
+    with open(attrs_path, encoding="utf-8") as fh:
+        for raw in fh:
+            k, _, v = raw.rstrip("\n").partition("=")
+            if k == "when":
+                when = v
+    if not when:
+        return True
+    facts = profile_facts(series_dir)
+    for cond in when.split(","):
+        k, _, v = cond.partition(":")
+        if facts.get(k) != v:
+            return False
+    return True
+
+
+def main(argv):
+    if len(argv) < 2:
+        print(__doc__, file=sys.stderr)
+        return 2
+    cmd = argv[1]
+    try:
+        if cmd == "tangle" and len(argv) in (3, 4):
+            for dest in tangle(argv[2], argv[3] if len(argv) == 4 else "conformance"):
+                print(dest)
+            return 0
+        if cmd == "tags" and len(argv) == 3:
+            for s in tags(argv[2]):
+                print(s)
+            return 0
+        if cmd == "lint" and len(argv) == 3:
+            problems = lint(argv[2])
+            for p in problems:
+                print(p)
+            return 1 if problems else 0
+        if cmd == "when" and len(argv) in (3, 4):
+            return 0 if applies(argv[2], argv[3] if len(argv) == 4 else None) else 1
+    except Problem as p:
+        print("rfc-snippets: %s" % p, file=sys.stderr)
+        return 1
+    except FileNotFoundError as e:
+        print("rfc-snippets: %s not found" % e.filename, file=sys.stderr)
+        return 1
+    print(__doc__, file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))
