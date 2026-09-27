@@ -248,23 +248,34 @@ $ cat > draft-a-x-00.md <<'EOF'
 > return len({{input}})
 > ```
 > Counts. [R-len]
+> ```mica mode=eval @R-len
+> return len([])
+> ```
 > <!-- evidence: @R-len template=len-case -->
 > | input | expect |
 > |---|---|
 > | `[1, 2]` | 2 |
 > | `"héllo"` | 5 |
+> | `"a\|b\n"` | 4 |
 > EOF
-$ rfc-tangle draft-a-x-00.md out | sort
+$ rfc-tangle draft-a-x-00.md out
 out/draft-a-x-00.len.1.mica
 out/draft-a-x-00.len.2.mica
-$ cat out/draft-a-x-00.len.2.mica out/draft-a-x-00.len.2.mica.expect out/draft-a-x-00.len.2.mica.attrs
+out/draft-a-x-00.len.3.mica
+out/draft-a-x-00.len.4.mica
+$ cat out/draft-a-x-00.len.3.mica out/draft-a-x-00.len.3.mica.expect out/draft-a-x-00.len.3.mica.attrs
 return len("héllo")
 5
 mode=eval
+$ cat out/draft-a-x-00.len.4.mica
+return len("a|b\n")
 ```
 
-Cells are read as written, except that one pair of surrounding
-backticks is removed so a cell can show code. `rfc-lint` MUST reject a
+Cells are read as written, except that `\|` stands for a literal `|`
+(the table's own escape) and one pair of surrounding backticks is
+removed so a cell can show code; every other backslash is kept. Blocks
+and table rows tagged for the same requirement and type are numbered
+together in document order. `rfc-lint` MUST reject a
 template whose chunk does not exist and a `{{column}}` placeholder with
 no matching column. [R-template-lint]
 

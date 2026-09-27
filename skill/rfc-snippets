@@ -139,18 +139,19 @@ def table_cells(line):
         text = text[1:]
     if text.endswith("|") and not text.endswith("\\|"):
         text = text[:-1]
-    cells, cur, esc = [], "", False
-    for ch in text:
-        if esc:
-            cur += ch
-            esc = False
-        elif ch == "\\":
-            esc = True
-        elif ch == "|":
+    # The table's only escape is \| for a literal pipe; other backslashes stay.
+    cells, cur, i = [], "", 0
+    while i < len(text):
+        if text.startswith("\\|", i):
+            cur += "|"
+            i += 2
+            continue
+        if text[i] == "|":
             cells.append(cur.strip())
             cur = ""
         else:
-            cur += ch
+            cur += text[i]
+        i += 1
     cells.append(cur.strip())
     return cells
 
@@ -281,6 +282,9 @@ def tangle(path, outdir):
             text = PLACEHOLDER.sub(lambda m: values.get(m.group(1), m.group(0)), body)
             expects = [(k, values[k] + "\n") for k in ("expect", "expect-error") if k in values]
             cases.append((slug, chunk.type, text, cattrs, chunk.flags, expects, line))
+    # Blocks and template rows number together in document order; sorted()
+    # is stable, so rows of one table keep their order.
+    cases = sorted(cases, key=lambda case: case[6])
     counts = {}
     for slug, typ, *_ in cases:
         counts[(slug, typ)] = counts.get((slug, typ), 0) + 1
