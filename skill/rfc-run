@@ -207,7 +207,7 @@ for rfc in "$@"; do
     for t in "$tangled"/*; do
         [ -e "$t" ] || continue
         # sidecars (draft-ndn-snippet-attributes-00) travel with their block
-        case "$t" in *.attrs|*.expect|*.expect-error) continue ;; esac
+        case "$t" in *.attrs|*.expect|*.expect-error|*.expect-reject) continue ;; esac
         found=1
         if [ -f "$t.attrs" ] && ! "$SKILL_DIR/rfc-snippets" when "$t.attrs" "$series_dir"; then
             echo "N/A $(basename "$t")"
