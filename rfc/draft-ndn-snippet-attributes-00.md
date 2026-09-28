@@ -41,7 +41,7 @@ when, and only when, they appear in all capitals, as shown here.
 - **chunk** — a block named with `id=`; it is not evidence on its own.
 - **variant** — one of several evidence blocks for the same requirement and type.
 - **profile** — the facts (`key=value`) that describe the implementation under test.
-- **sidecar** — a file `rfc-tangle` writes next to a tangled block: `.attrs`, `.expect`, `.expect-error`.
+- **sidecar** — a file `rfc-tangle` writes next to a tangled block: `.attrs`, `.expect`, `.expect-error`, `.expect-reject`.
 
 ## Specification
 
@@ -121,10 +121,11 @@ $ rfc-lint draft-a-x-00.md 2>&1 | grep -c "malformed info string"
 
 ### Expected results
 
-One or more blocks of type `expect` or `expect-error` that immediately
-follow an evidence block (blank lines allowed between) state what that
-block produces. `rfc-tangle` MUST write them as sidecars
-`<file>.expect` and `<file>.expect-error`; an `expect` block anywhere
+One or more blocks of type `expect`, `expect-error` or `expect-reject`
+that immediately follow an evidence block (blank lines allowed between)
+state what that block produces. `rfc-tangle` MUST write them as sidecars
+`<file>.expect`, `<file>.expect-error` and `<file>.expect-reject`; an
+`expect` block anywhere
 else is an error. How "produce" is observed is the adapter's decision;
 how expected text is matched is fixed here. [R-expect-pairing]
 

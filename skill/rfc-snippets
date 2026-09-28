@@ -219,6 +219,9 @@ def expand(block, chunks, doc_dir, seen=()):
     return text + block.body
 
 
+EXPECT_KINDS = ("expect", "expect-error", "expect-reject")
+
+
 def expect_pairs(blocks, lines):
     """Map evidence block index -> its expect blocks, and list orphan expects.
 
@@ -227,7 +230,7 @@ def expect_pairs(blocks, lines):
     pairs, orphans = {}, []
     owner = None
     for idx, b in enumerate(blocks):
-        is_expect = b.parsed and b.type in ("expect", "expect-error")
+        is_expect = b.parsed and b.type in EXPECT_KINDS
         if is_expect:
             if owner is not None and idx > 0 and only_blank_between(lines, blocks[idx - 1], b):
                 pairs.setdefault(owner, []).append(b)
@@ -264,7 +267,7 @@ def tangle(path, outdir):
         raise Problem("line %d: expect block does not follow an evidence block" % b.line)
     cases = []  # (slug, type, body, attrs, flags, expects[(kind, text)])
     for idx, b in enumerate(blocks):
-        if not b.parsed or not b.slug or b.type in ("expect", "expect-error"):
+        if not b.parsed or not b.slug or b.type in EXPECT_KINDS:
             continue
         expects = [(e.type, e.body) for e in pairs.get(idx, [])]
         cases.append((b.slug, b.type, expand(b, chunks, doc_dir), b.attrs, b.flags, expects, b.line))
@@ -280,7 +283,7 @@ def tangle(path, outdir):
         for row in rows:
             values = {h: unquote_cell(row[i]) if i < len(row) else "" for i, h in enumerate(header)}
             text = PLACEHOLDER.sub(lambda m: values.get(m.group(1), m.group(0)), body)
-            expects = [(k, values[k] + "\n") for k in ("expect", "expect-error") if k in values]
+            expects = [(k, values[k] + "\n") for k in EXPECT_KINDS if k in values]
             cases.append((slug, chunk.type, text, cattrs, chunk.flags, expects, line))
     # Blocks and template rows number together in document order; sorted()
     # is stable, so rows of one table keep their order.
