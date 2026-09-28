@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # rfc-check — the whole conformance gate, one command.
-# Usage: rfc-check <rfc-dir>          full gate (the verdict of record)
-#        rfc-check <rfc.md>...        spot run (advisory — no merge standing)
+# Usage: rfc-check [--no-evidence] <rfc-dir>     full gate (the verdict of record)
+#        rfc-check [--no-evidence] <rfc.md>...   spot run (advisory — no merge standing)
+# --no-evidence skips steps 2 and 3, for a series whose evidence runs in
+# each implementation's CI (the series holds no adapter for its types).
 # Runs, in order, exactly what CI runs:
 #   1. rfc-lint over every draft and published RFC   (blocking)
 #   2. rfc-run over published RFCs                   (blocking)
@@ -12,7 +14,9 @@
 # gate has one body, so local runs and CI cannot drift.
 set -u
 
-[ $# -ge 1 ] || { echo "usage: rfc-check <rfc-dir> | rfc-check <rfc.md>..." >&2; exit 2; }
+EVIDENCE=1
+if [ "${1:-}" = "--no-evidence" ]; then EVIDENCE=0; shift; fi
+[ $# -ge 1 ] || { echo "usage: rfc-check [--no-evidence] <rfc-dir> | rfc-check [--no-evidence] <rfc.md>..." >&2; exit 2; }
 SKILL_DIR="$(cd "$(dirname "$0")" && pwd)"
 FAIL=0
 SPOT=0
@@ -45,14 +49,16 @@ for f in "${all[@]}"; do
     "$SKILL_DIR/rfc-lint" "$f" > /dev/null 2>&1 || { echo "FAIL lint: $f"; "$SKILL_DIR/rfc-lint" "$f" 2>&1 | grep -E "^(ERROR|WARNING)" | head -5; FAIL=1; }
 done
 
-if [ ${#published[@]} -gt 0 ]; then
+if [ "$EVIDENCE" = 0 ]; then
+    echo "== evidence: runs in each implementation's CI (--no-evidence)"
+elif [ ${#published[@]} -gt 0 ]; then
     echo "== published evidence (blocking)"
     "$SKILL_DIR/rfc-run" "${published[@]}" || FAIL=1
 else
     echo "== published evidence: none yet (all drafts)"
 fi
 
-if [ ${#drafts[@]} -gt 0 ]; then
+if [ "$EVIDENCE" = 1 ] && [ ${#drafts[@]} -gt 0 ]; then
     echo "== draft corpus declarations (red only by declaration)"
     "$SKILL_DIR/rfc-run" --expect "${drafts[@]}" > /dev/null 2>&1 || { echo "FAIL: a draft's corpus does not match its declaration"; "$SKILL_DIR/rfc-run" --expect "${drafts[@]}" 2>&1 | grep MISMATCH; FAIL=1; }
 fi
@@ -67,9 +73,13 @@ echo "document | lint | corpus | declared | digest"
 for f in "${all[@]}"; do
     n=$(basename "$f" .md)
     "$SKILL_DIR/rfc-lint" "$f" >/dev/null 2>&1 && L="ok" || L="FAIL"
-    if "$SKILL_DIR/rfc-run" "$f" >/dev/null 2>&1; then C="green"; else C="red"; fi
     d=$(sed -n 's/^\*\*Corpus:\*\* *//p' "$f" | head -1); d="${d%% *}"; d="${d:-green}"
-    [ "$C" = "$d" ] && D="$d" || D="$d (STALE)"
+    if [ "$EVIDENCE" = 0 ]; then
+        C="external"; D="$d"
+    else
+        if "$SKILL_DIR/rfc-run" "$f" >/dev/null 2>&1; then C="green"; else C="red"; fi
+        [ "$C" = "$d" ] && D="$d" || D="$d (STALE)"
+    fi
     "$SKILL_DIR/rfc-render-llm" --verify "$f" >/dev/null 2>&1 && G="ok" || G="FAIL"
     echo "$n | $L | $C | $D | $G"
 done
