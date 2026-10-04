@@ -338,9 +338,10 @@ agent inspects the changes and resolves them with one of:
 - `--commit-wip` — commit every change with a message naming the run
   and state; a check recorded next covers the work. The preferred
   recovery, since the work is most likely the run's own.
-- `--stash` — stash every change, including untracked files, and attach
-  `stash: <ref>` to the current state, so work that does not belong to
-  this step stays findable.
+- `--stash` — stash every change, including untracked files, keep the
+  stash commit under the ref `refs/fsm/stash/<run>/<n>`, and attach
+  `stash: <commit>` to the current state. The commit ID and the ref keep
+  the work findable and reachable however the stash list changes later.
 
 The executor MUST NOT discard working-tree changes by any path.
 [R-dirty-tree]
@@ -369,11 +370,13 @@ $ rfc-fsm-exec m.fsm --state .git/run --record verify | grep -c "recorded verify
 $ touch stray
 $ rfc-fsm-exec m.fsm --state .git/run --stash > /dev/null; echo $?
 0
-$ grep -cE '^  stash: stash@' .git/run
-1
+$ stashed=$(sed -n 's/^  stash: //p' .git/run)
 $ test -e stray; echo $?
 1
-$ git stash list | grep -c .
+$ git stash push -q --include-untracked -m other 2>/dev/null; git stash clear
+$ git cat-file -e "$stashed^{commit}"; echo $?
+0
+$ git for-each-ref refs/fsm/stash --format='%(objectname)' | grep -c "$stashed"
 1
 ```
 
@@ -425,8 +428,8 @@ $ rfc-fsm-exec m.fsm --state .git/run B 2>&1 | grep -c "base"
 ```
 
 **Querying currency.** `rfc-fsm-exec --current <key>...` MUST exit 0 when
-the latest claim for every named key in the current state visit is
-current, and 1 otherwise, naming the first that is not, so that a
+the latest claim for every named key in the active run — recorded in any
+state of it, not only the current one — is current, and 1 otherwise, naming the first that is not, so that a
 command acting on the world (a push, a merge) checks the record itself
 immediately before acting. The executor validates evidence at
 transitions; it does not mediate the commands an agent runs between
@@ -440,6 +443,9 @@ $ printf 'initial A\nA -> B\nterminal B\ncheck verify\n' > m.fsm
 $ git add m.fsm && git commit -q -m machine
 $ rfc-fsm-exec m.fsm --state .git/run >/dev/null
 $ rfc-fsm-exec m.fsm --state .git/run --record verify >/dev/null
+$ rfc-fsm-exec m.fsm --state .git/run --current verify; echo $?
+0
+$ rfc-fsm-exec m.fsm --state .git/run B > /dev/null
 $ rfc-fsm-exec m.fsm --state .git/run --current verify; echo $?
 0
 $ echo x > f && git add f && git commit -q -m more
@@ -615,7 +621,9 @@ attachment, and resolves the child machine as `rfc-fsm-compile` does.
 
 **Identity.** Child runs are numbered per key across the whole
 repository, not per parent, so `pr-1015/r3` names one run no matter which
-session started it. On the file store, records live at
+session started it. Numbering is coordinated within one repository's git
+directory; clones that allocate independently are not coordinated with
+each other, and this document does not claim they are. On the file store, records live at
 `<log dir>/runs/<child-key>/r<n>` (the log directory of Configuration,
 shared by every workspace); on the ledger store, at the key
 `<child-key>/r<n>` of the parent's ledger.
@@ -625,11 +633,10 @@ run number, enter the parent state, and bind the child as a single
 operation: the parent's new state line and its `child: <child-key>/r<n>
 @ <child machine pin>` attachment are written in one write — one append
 on the file store, one `ledger set` event carrying both fields on the
-ledger store. Allocation MUST be exclusive: on the file store under an
-exclusive lock on `<log dir>/runs/<child-key>.lock`; on the ledger store
-by writing the binding and reading back the key's bindings in ledger
-order, where the earliest binding of a number keeps it and a later one
-re-allocates. The child's first state is written after the binding. An
+ledger store. Allocation MUST hold an exclusive lock on
+`<log dir>/runs/<child-key>.lock` from choosing the number until the
+binding is written, on both stores, so two executors in one repository
+never bind the same number and no binding is ever provisional. The child's first state is written after the binding. An
 executor that stops after the binding finds, on its next invocation, a
 binding whose run has no record, and creates it; an executor that stops
 before the binding has changed nothing. Every crash point is therefore
@@ -822,7 +829,7 @@ $ rfc-fsm-exec m.fsm --state run --audit >/dev/null; echo $?
 |---|---|---|---|
 | `fsm.check.<key>` | Command | none | The command a check or observation key runs. jj repo config in a jj repository, otherwise `git config --local`. No default: an unconfigured key cannot be recorded. |
 | `fsm.base.<key>` | Command | none | For a `history` check, the command that prints the base commit it runs against. Required for history checks. |
-| `fsm.log-dir` | Path | `<git common dir>/fsm-logs` | Where logs, receipts, and file-store child runs are kept. Resolved from the backing git repository: `jj git root` in a jj repository (which works from a secondary workspace with no `.git`), otherwise `git rev-parse --git-common-dir` (which works when `.git` is a file). Never committed. |
+| `fsm.log-dir` | Path | `<git common dir>/fsm-logs` | Where logs, receipts, and file-store child runs are kept. Resolved from the backing git repository: `jj git root` in a jj repository, which prints the backing git directory itself (inside `.jj` or `.git`, never the working tree) and works from a secondary workspace with no `.git`, otherwise `git rev-parse --git-common-dir` (which works when `.git` is a file). Never committed. |
 | `--state` / `--store` | Store | none | The record store; session mode takes exactly one. |
 
 **Resolution precedence** for a key's command: (1) jj repo config

@@ -159,9 +159,25 @@ $ rfc-abnf d.md any < nothing; echo $?
 2
 ```
 
-`--verdicts` MUST print one line per record, `accept` or `reject`, in
-order, instead of stopping at the first mismatch, so `rfc-abnf` can
-serve as the batch parser of a differential check. `--reject` MUST invert the verdict: exit 0 only when every
+`--verdicts` MUST print one LF-terminated line per record, `accept` or
+`reject`, in order, instead of stopping at the first mismatch, and MUST
+exit 0 once every record has a verdict, whatever the verdicts are; it
+keeps the error exits (2 for an unusable grammar or no input, 4 for an
+exhausted budget). Framing options apply to the records read, never to
+the verdict lines. So `rfc-abnf` can serve as the batch parser of a
+differential check. [R-abnf-verdicts]
+
+```transcript @R-abnf-verdicts
+$ printf '```abnf\nab = "a" / "b"\n```\n' > v.md
+$ printf 'a\nc\nb\n' > mixed
+$ rfc-abnf --verdicts v.md ab < mixed; echo $?
+accept
+reject
+accept
+0
+```
+
+`--reject` MUST invert the verdict: exit 0 only when every
 record fails to match, so a set of near-misses is checked in full and
 not only up to its first. Rules resolve across all `abnf` blocks of
 the document, so a grammar split around prose is one grammar.
