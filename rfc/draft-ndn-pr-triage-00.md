@@ -412,12 +412,15 @@ that loses its lease records why and parks:
 
 ```transcript @R-pr-owner
 $ mark="$PWD/marks" && mkdir "$mark"
-$ pr-fixture . --pr 7 --at VERIFY --verify-command "echo \$\$ > $mark/pid; sleep 30; touch $mark/ran-to-end" > /dev/null
+$ pr-fixture . --pr 7 --at VERIFY --verify-command "echo \$\$ > $mark/pid; sleep 30 & echo \$! > $mark/child; wait; touch $mark/ran-to-end" > /dev/null
+$ jj config set --repo pr-triage.lease 3s
 $ S="rfc-fsm-exec .pr-triage/session.fsm --state .git/session"
-$ (for i in $(seq 100); do test -s "$mark/pid" && break; sleep 0.1; done; pr-lease steal --pr 7 --as codex/z) &
+$ (for i in $(seq 100); do test -s "$mark/child" && break; sleep 0.1; done; pr-lease steal --pr 7 --as codex/z) &
 $ $S --record verify > /dev/null 2>&1; echo $?
 1
 $ wait; kill -0 "$(cat "$mark/pid")" 2> /dev/null; echo $?
+1
+$ kill -0 "$(cat "$mark/child")" 2> /dev/null; echo $?
 1
 $ test -e "$mark/ran-to-end"; echo $?
 1
@@ -431,6 +434,8 @@ $ pr-wait posted --pr 7; echo $?
 1
 $ wait; receipt=$(sed -n 's|^  wait-ended: observe:wait-ended@[0-9TZ]*/exit=0/receipt=||p' .git/fsm-logs/runs/pr-7/r1)
 $ grep -c 'lease lost to codex/z' ".git/fsm-logs/$receipt"
+1
+$ test -s forge-comments.jsonl; echo $?
 1
 $ $S PARKED > /dev/null && pr-done --pr 7 > /dev/null; echo $?
 0
@@ -457,7 +462,7 @@ of checking now. A refusal exits nonzero and records nothing.
 | `pr-merge` (`merged`) | held | Authorization from fresh forge state (Merge policy), every attempt, including a resumed one — never an earlier observation. | Receipt: the merge and its authorization. |
 | `pr-merged` (`human-merged`) | held | Observes the forge only and acts on nothing: exits 0 when the PR is merged there. | Receipt: the merge commit. |
 | `pr-merge --held` (`merge-held`) | held | The same authorization; exits 0 only when merging is not allowed, and merges nothing. | Receipt: why merging is not allowed. |
-| `pr-post` (`posted`) | held | That the draft's hash matches the `draft` attachment and the operator approved it; then looks on the forge for a comment on the PR whose body hashes to the draft's, and if one exists records it without posting, so a post whose recording was interrupted, or one the operator made by hand, is observed and never repeated; otherwise posts through `comment-post --approved`. | `posted` and the ledger fields `posted=<comment ID>`, `handled=<activity ID>`. |
+| `pr-post` (`posted`) | held | That the draft's hash matches the `draft` attachment and the operator approved it; then looks on the forge for a comment on the PR by the operator's account, created after this run attached the draft, whose body hashes to the draft's, and if one exists records it without posting — an identical earlier reply, or one by anyone else, does not count — so a post whose recording was interrupted, or one the operator made by hand, is observed and never repeated; otherwise posts through `comment-post --approved`. | `posted` and the ledger fields `posted=<comment ID>`, `handled=<activity ID>`. |
 | `pr-wait <obs>` | held at start | Runs `rfc-fsm-exec --record <obs>` every `pr-triage.poll-interval`, renewing the lease between attempts. | The observation when it appears; after `pr-triage.poll-limit` attempts or on a lost lease, it runs `rfc-fsm-exec --record wait-ended`. |
 | `pr-wait-ended` (`wait-ended`) | none | Exits 0 when this run's poll limit is spent or its lease is lost — a recovery record, so it needs no lease. | Receipt: which. |
 | `pr-ws done` (`cleaned`) | held | That this instance holds the PR's lease. | Receipt: the removed workspace. |
@@ -522,15 +527,32 @@ A post whose recording was lost is observed on the next attempt, not
 posted again:
 
 ```transcript @R-pr-wrappers
-$ pr-fixture . --pr 7 --at AWAIT_APPROVAL > /dev/null
+$ pr-fixture . --pr 7 --at AWAIT_APPROVAL --approved > /dev/null
 $ S="rfc-fsm-exec .pr-triage/session.fsm --state .git/session"
-$ python3 -c 'import json;print(json.dumps({"id":"c1","body":open("draft.md").read()}))' >> forge-comments.jsonl
+$ c() { python3 -c 'import json,sys,datetime;print(json.dumps({"id":sys.argv[1],"author":sys.argv[2],"created":sys.argv[3] or datetime.datetime.now(datetime.timezone.utc).isoformat(),"body":open("draft.md").read()}))' "$@" >> forge-comments.jsonl; }
+$ c c0 op 2000-01-01T00:00:00Z && c c9 someone ""
+$ c c1 op ""
 $ $S --record posted > /dev/null; echo $?
 0
 $ wc -l < forge-comments.jsonl | tr -d ' '
-1
+3
 $ cat posted-id
 c1
+```
+
+An identical earlier reply, or another author's, is not this post:
+
+```transcript @R-pr-wrappers
+$ pr-fixture . --pr 7 --at AWAIT_APPROVAL --approved > /dev/null
+$ S="rfc-fsm-exec .pr-triage/session.fsm --state .git/session"
+$ c() { python3 -c 'import json,sys,datetime;print(json.dumps({"id":sys.argv[1],"author":sys.argv[2],"created":sys.argv[3] or datetime.datetime.now(datetime.timezone.utc).isoformat(),"body":open("draft.md").read()}))' "$@" >> forge-comments.jsonl; }
+$ c c0 op 2000-01-01T00:00:00Z && c c9 someone ""
+$ $S --record posted > /dev/null; echo $?
+0
+$ wc -l < forge-comments.jsonl | tr -d ' '
+3
+$ grep -cxE 'c0|c9' posted-id
+0
 ```
 
 This limits what an agent does through the skill, not what it can do: an
@@ -616,6 +638,8 @@ $ pr-wait posted --pr 7; echo $?
 1
 $ rfc-fsm-exec .pr-triage/session.fsm --state .git/session | grep -c "wait-ended"
 1
+$ test -s forge-comments.jsonl; echo $?
+1
 $ rfc-fsm-exec .pr-triage/session.fsm --state .git/session PARKED | grep -c "LEGAL"
 1
 ```
@@ -678,12 +702,12 @@ $ ledger show --ledger pr-triage | grep -cE 'state|attach|pin|owner|posted|handl
 ```
 
 The skill MUST ship `bin/pr-fixture <dir> [--pr N] [--at STATE] [--with
-key,...] [--via requested] [--unbound] [--verify-command <cmd>] [--fresh]`, which builds a self-contained test repository in
+key,...] [--via requested] [--unbound] [--verify-command <cmd>] [--approved] [--fresh]`, which builds a self-contained test repository in
 `<dir>`: a jj repository with a bare git repository `forge.git` standing
 in for the forge, a recorded forge state for the PR in `forge-state.json` and a green, approved one in `forge-green.json` (served through
 `PR_FORGE_FIXTURE`), the ledger initialized by `pr-init`, a PR workspace
 at `ws/pr-<N>`, fixture commands for every check and observation key,
-the PR's head commit in the file `head`, the approved draft at `AWAIT_APPROVAL` in `draft.md`, every comment posted to the stand-in forge as one line of `forge-comments.jsonl`, and, after `pr-post`, the posted comment's ID in `posted-id`. `PR_FORGE_FIXTURE` may name several state files separated by `:`; each run of a wrapper reads the next, and the last repeats. With `--at STATE` it walks a
+the PR's head commit in the file `head`, the draft at `AWAIT_APPROVAL` in `draft.md` — approved by the operator only with `--approved` — every comment on the stand-in forge as one line of `forge-comments.jsonl` (`id`, `author`, `created`, `body`; the operator's account is `op`), and, after `pr-post`, the posted comment's ID in `posted-id`. `PR_FORGE_FIXTURE` MAY name several state files separated by `:`; each run of a wrapper reads the next, and the last repeats. With `--at STATE` it walks a
 session and its PR run to that state through the executor, recording the
 evidence each guard on the way needs, so the record is one an agent
 could have produced; `--with` records further keys at that state, and
@@ -707,7 +731,7 @@ $ pr-class --snapshot snap.json parked; echo $?
 Classification facts reach another clone through the ledger alone:
 
 ```transcript @R-pr-classify
-$ pr-fixture a --pr 7 --at AWAIT_APPROVAL > /dev/null
+$ pr-fixture a --pr 7 --at AWAIT_APPROVAL --approved > /dev/null
 $ (cd a && pr-post --pr 7 --approved > /dev/null && ledger export pr-triage) > events.jsonl
 $ jj git init -q b 2>/dev/null && cd b && ledger init > /dev/null && ledger import ../events.jsonl > /dev/null
 $ pr-init .pr-triage > /dev/null; echo $?
