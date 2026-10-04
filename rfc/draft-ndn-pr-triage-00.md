@@ -245,11 +245,11 @@ guard MERGED -> PARKED: blocked
 note CLASSIFY: record snapshot — it takes the PR's lease, or finds another instance holding it — then the one class it decides (parked, already-merged, closed, dirty, red, review, mergeable); for dirty or red also attach workspace: <path> to bind the run's checks to the PR's workspace, and record isolated — the bound workspace exists, is the PR's, is at the PR head, and is not the main checkout; the snapshot decides the branch, you do not
 note PROBE: record generated-only when every conflict on trunk is in a generated file, and REGEN resolves it; otherwise attach hand-merge describing the conflict and resolve it in FIX
 note REGEN: run the repository's regeneration in the PR's workspace and commit the result, attaching change: <commit>; then record regenerated (the freshness check at that commit), artifacts-clean, and tests-untouched — regeneration that edits a test file goes to FIX instead; if regeneration cannot resolve the conflict, attach hand-merge and go to FIX
-note FIX: the work is yours: change the code in the PR's workspace and attach change: <commit>; record artifacts-clean (no binaries, no untracked or scratch files in the diff) and tests-untouched (the diff against the PR's base changes or deletes no existing test file; adding one is not an edit) to go to VERIFY; a fix for a review finding (you came through requested) also records fix-proven — reproduce the reviewer's scenario as a test the fix makes pass; a diff that edits a test file records tests-touched instead and goes through TEST_CHANGE; if the failure is not the PR's, record base-fails and answer on the PR; if a dirty tree greets you, it is your own work from before a context loss — read it, then commit or stash it; if you cannot proceed, attach blocked with the reason and park
+note FIX: the work is yours: change the code in the PR's workspace and attach change: <commit>; record artifacts-clean (no binaries, no untracked or scratch files in the diff) and tests-untouched (the diff against the PR's base changes or deletes no existing test file; adding one is not an edit) to go to VERIFY; a fix that changes behavior comes with a test that fails without it — new, or a change to existing tests — and a review fix may record fix-proven to show the reviewer so; a rename or restructuring needs no new test; a diff that changes an existing test file records tests-touched instead and goes through TEST_CHANGE, where the review finding is the written intent; if the failure is not the PR's, record base-fails and answer on the PR; if a dirty tree greets you, it is your own work from before a context loss — read it, then commit or stash it; if you cannot proceed, attach blocked with the reason and park
 note TEST_CHANGE: a test file is edited; attach test-reason citing where the behavior change was intended, in writing, by someone other than you (an issue, a review, the PR description), and record artifacts-clean
 note VERIFY: record verify — the configured test command at this commit; a failure goes back to FIX, and a hook that fails under load is a failed verify, not a flaky one; an edit made here withdraws the checks recorded in FIX, so make edits in FIX
 note PUSH: record pushed — its command is pr-push, which pushes exactly the commit your current checks describe; if it refuses because your checks no longer describe the workspace, return to FIX and record them again; the next CLASSIFY usually finds CI pending and parks until a later poll
-note RESPOND: read every comment and thread critically before acting (critical-reading); if the review asks for changes, attach requested summarizing them, attach workspace: <path> naming the PR's workspace, record isolated, and go to FIX; otherwise draft the reply as the operator speaking (posting-as-the-user), attach draft: <path> sha256 <hash>, and never post from this state
+note RESPOND: read every comment and thread critically before acting (critical-reading); if the review asks for changes, attach requested summarizing them, attach workspace: <path> naming the PR's workspace, record isolated, and go to FIX; otherwise an unlabeled comment is required and is fixed or answered with reasons; a Nit, Optional, or Consider is your choice; an FYI needs no action; prefer changing the code to explaining in the thread, and disagree with technical reasons, not refusal (codereview-receiving); draft the reply as the operator speaking (posting-as-the-user), attach draft: <path> sha256 <hash>, and never post from this state
 note AWAIT_APPROVAL: wait with pr-wait posted; the post happens only through pr-post after the operator approves, and posted records once it is on the forge, ending the run; a requested revision goes back to RESPOND; wait-ended records when the wait runs out or the lease is lost, and the run parks
 note MERGE: record merged — its command is pr-merge, which authorizes from fresh forge state immediately before merging and merges with the head pinned; if merging is not allowed (policy never, or authorization fails) it refuses, and you record merge-held and go to AWAIT_HUMAN
 note AWAIT_HUMAN: wait with pr-wait human-merged for the operator's decision; human-merged records once they have merged on the forge; attach declined: <head> <reason> if they decline, which ends the run and holds until the PR's head changes; wait-ended records when the wait runs out or the lease is lost, and the run parks
@@ -493,7 +493,7 @@ of checking now. A refusal exits nonzero and records nothing.
 | Wrapper | Lease | Checks before acting | Records |
 |---|---|---|---|
 | every check key (`verify`, `regenerated`, `artifacts-clean`, `tests-untouched`, `tests-touched`, `fix-proven`) and the observations `isolated`, `generated-only`, `base-fails`, `issues-settled` | held | That this instance holds the PR's lease, renewed while the command runs — a verification that outlives its lease records nothing. | The claim or receipt. |
-| `pr-push` (`pushed`) | held | `rfc-fsm-exec --current` for the check keys `verify`, `artifacts-clean`, and `tests-untouched` or `tests-touched`, all at the same commit, and — when `tests-touched` — a `test-reason` attached in this run, and — when `requested` is attached in this run — `fix-proven` at that commit; and that the run's bound workspace is at that commit. Pushes exactly that commit through `pr-triage.push-wrap`. | Receipt: the pushed commit and the forge head after; for a fix entered through `requested`, the ledger field `handled`. |
+| `pr-push` (`pushed`) | held | `rfc-fsm-exec --current` for the check keys `verify`, `artifacts-clean`, and `tests-untouched` or `tests-touched`, all at the same commit, and — when `tests-touched` — a `test-reason` attached in this run, and and that the run's bound workspace is at that commit. Pushes exactly that commit through `pr-triage.push-wrap`. | Receipt: the pushed commit and the forge head after; for a fix entered through `requested`, the ledger field `handled`. |
 | `pr-merge` (`merged`) | held | Authorization from fresh forge state (Merge policy), every attempt, including a resumed one — never an earlier observation. | Receipt: the merge and its authorization. |
 | `pr-merged` (`human-merged`) | held | Observes the forge only and acts on nothing: exits 0 when the PR is merged there. | Receipt: the merge commit. |
 | `pr-merge --held` (`merge-held`) | held | The same authorization; exits 0 only when merging is not allowed, and merges nothing. | Receipt: why merging is not allowed. |
@@ -546,15 +546,26 @@ $ $S FIX | grep -c "LEGAL"
 1
 ```
 
-A fix for a review finding is proven, not asserted: the history check
-`fix-proven` (default command `pr-proof`) MUST exit 0 only when the
-diff against the PR's base adds or changes a test file
-(`pr-triage.tests`), `pr-triage.proof-command` on those tests passes at
-the commit, and the same command fails in a temporary worktree at that
-commit with every other changed file restored to the base — so a test
-that passes with and without the fix proves nothing. A diff that
-changes only paths matching `pr-triage.non-code` passes with a receipt
-saying no code changed. [R-pr-proof]
+Tests for a review fix are the author's to include and the reviewer's
+to judge, as in any code review: a fix that changes behavior SHOULD
+come with a test that fails without it — a new test, a change to
+existing tests, or both — and a fix with no behavior to test, such as a
+rename or a restructuring, needs none. Nothing here blocks a push for
+want of a test. Whether a fix's tests are adequate is a finding the
+reviewer raises, which comes back as activity like any other, and
+`mergeable` still needs the reviewer's approval at the new head
+(Classification). [R-pr-proof]
+
+To make that judgment cheap, the agent MAY record the history check
+`fix-proven` (default command `pr-proof`) and cite its receipt in the
+reply. It exits 0 only when the diff against the PR's base adds tests or
+changes existing ones — in one test file or several
+(`pr-triage.tests`) — and the changed tests, run one file at a time
+with `pr-triage.proof-command`, all pass at the commit, while in a
+temporary worktree at that commit with every changed non-test file
+restored to the base, at least one of them fails. The changed tests are
+judged as a set; a set that passes with and without the fix proves
+nothing, and a reply MUST NOT claim it does.
 
 ```transcript @R-pr-proof
 $ pr-fixture . --pr 7 --at FIX --via requested > /dev/null
@@ -568,21 +579,25 @@ $ $S --record fix-proven > /dev/null; echo $?
 0
 ```
 
-`pr-push` refuses a review fix pushed without it:
+Changing an existing test proves a fix too, alongside a new test that
+proves nothing on its own:
 
 ```transcript @R-pr-proof
-$ pr-fixture . --pr 7 --at PUSH --via requested > /dev/null
+$ pr-fixture . --pr 7 --at FIX --via requested > /dev/null
+$ jj config set --repo pr-triage.tests 'glob:test_*.sh' && jj config set --repo pr-triage.proof-command sh
 $ S="rfc-fsm-exec .pr-triage/session.fsm --state .git/session"
-$ $S --record pushed 2> err; echo $?
-1
-$ grep -c 'fix-proven' err
-1
+$ cd ws/pr-7 && echo 'x=2' > lib.sh && printf '. ./lib.sh\ntest "$x" = 2\n' >> test_base.sh && echo true > test_new.sh && jj describe -q -m "fix x" && cd ../..
+$ $S --record fix-proven > /dev/null; echo $?
+0
+$ $S --record tests-touched > /dev/null; echo $?
+0
 ```
 
-A fix for requested changes is handled within its own run, so the
-classification after its push does not answer the review again:
+A review fix pushes without `fix-proven`, and its push handles the
+finding, so the classification after it does not answer the review
+again; the reviewer's next review is new activity:
 
-```transcript @R-pr-wrappers
+```transcript @R-pr-proof
 $ pr-fixture . --pr 7 --at PUSH --via requested --fresh > /dev/null
 $ S="rfc-fsm-exec .pr-triage/session.fsm --state .git/session"
 $ $S --record pushed > /dev/null && $S CLASSIFY > /dev/null
@@ -817,7 +832,7 @@ key,...] [--via requested] [--unbound] [--verify-command <cmd>] [--approved] [--
 in for the forge, a recorded forge state for the PR in `forge-state.json` and a green, approved one in `forge-green.json` (served through
 `PR_FORGE_FIXTURE`), the ledger initialized by `pr-init`, a PR workspace
 at `ws/pr-<N>`, fixture commands for every check and observation key,
-the PR's head commit in the file `head`, the draft at `AWAIT_APPROVAL` in `draft.md` — approved by the operator only with `--approved` — every comment on the stand-in forge as one line of `forge-comments.jsonl` (`id`, `author`, `created`, `body`; the operator's account is `op`), and, after `pr-post`, the posted comment's ID in `posted-id`. `PR_FORGE_FIXTURE` MAY name several state files separated by `:`; each run of a wrapper, and each poll of `pr-wait settled`, reads the next, and the last repeats. With `--at PUSH --via requested` the run's checks are recorded without `fix-proven`. With `--at STATE` it walks a
+the PR's head commit in the file `head`, the draft at `AWAIT_APPROVAL` in `draft.md` — approved by the operator only with `--approved` — every comment on the stand-in forge as one line of `forge-comments.jsonl` (`id`, `author`, `created`, `body`; the operator's account is `op`), and, after `pr-post`, the posted comment's ID in `posted-id`. `PR_FORGE_FIXTURE` MAY name several state files separated by `:`; each run of a wrapper, and each poll of `pr-wait settled`, reads the next, and the last repeats. The base holds a passing test, `test_base.sh`. With `--at STATE` it walks a
 session and its PR run to that state through the executor, recording the
 evidence each guard on the way needs, so the record is one an agent
 could have produced; `--with` records further keys at that state, and
@@ -875,7 +890,7 @@ $ rfc-fsm-exec .pr-triage/session.fsm --state .git/session | grep -c "state: FIX
 | `pr-triage.merge` | `never` \| `when-approved` | `never` | Merge policy (above). |
 | `pr-triage.reviewers` | List | none | Reviewers (e.g. a review bot) whose review of the head a PR waits for before it is settled. |
 | `pr-triage.treadmill` | Integer | `3` | Base updates per session before a PR that keeps falling behind parks. |
-| `pr-triage.tests` / `non-code` / `proof-command` | Glob / Glob / Command | none / none / the `verify` command | What `pr-proof` treats as tests and as non-code, and how it runs the tests. |
+| `pr-triage.tests` / `proof-command` | Glob / Command | none / the `verify` command | What `pr-proof` treats as tests, and how it runs them. |
 | `pr-triage.drafts` | `park` \| `triage` | `park` | Whether draft PRs are triaged. |
 | `pr-triage.poll-interval` | Duration | `60s` | Spacing of forge polls while waiting. |
 | `pr-triage.poll-limit` | Integer | `30` | Polls before a wait records `wait-ended` and parks the run. |
@@ -971,6 +986,17 @@ transitions the agent can run anything. Freshness and ownership matter
 at the moment of a push, a merge, or a post, so the wrappers that do
 those things check them then.
 
+### Why not require a proving test before a review fix is pushed?
+
+A gate on a test that fails when the fix is reverted blocks fixes it
+should not — a rename has no behavior to test — and substitutes like
+coverage of every changed line, or proof the reply must carry, only move
+the same burden around. They all put verification on the author. Code review places it with the
+reviewer, who judges whether the tests are adequate and whether a
+change improves the code; the process makes that judgment cheap
+(`fix-proven`) and makes sure a reviewer's objection is seen (`review`
+precedes `mergeable`), rather than replacing it.
+
 ### Why not decide "the diff weakens a test" with a command?
 
 Whether a change weakens a test is a judgment about intent. A command
@@ -986,7 +1012,8 @@ monitoring deliberately ends with the session. This process triages
 every open PR of a jj repository, survives a lost session, and
 coordinates instances, which prose cannot. Its observation rules are
 adopted here: the settled condition, a review counting only for its
-commit, settled-is-not-clean, the proven review fix, scoped overrides,
+commit, settled-is-not-clean, the proven review fix (as evidence
+offered to the reviewer, not a gate), scoped overrides,
 forge content as evidence, and the base-update treadmill.
 
 ## Security Considerations
