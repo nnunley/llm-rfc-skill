@@ -67,32 +67,34 @@ commits to the first alternative that succeeds (PEG semantics) accepts a
 different language for some grammars and is not a conforming matcher.
 
 **No install step.** `rfc-abnf` MUST run with the Python standard library
-and files shipped in the skill directory only: its matcher is the `abnf`
-package (MIT), vendored at `skill/vendor/abnf/` with its licence and a
-`VERSION` file naming the pinned release, so `make install` remains a
-copy of the skill directory and no machine needs network access or
-`pip`. [R-abnf-vendored]
+and files shipped in the skill directory only. Its matcher is the `abnf`
+package (MIT), vendored at `skill/vendor/abnf/` with its licence, a
+`VERSION` file naming the pinned release and the SHA-256 of the release
+archive it was copied from, and a `PATCHES` file listing every local
+change and why. `rfc-abnf` MUST import the matcher from that directory
+and refuse to run (exit 2) if the module it loaded resolves anywhere
+else, so an installed copy of the package can never stand in for the
+pinned one. [R-abnf-vendored]
 
 ```transcript @R-abnf-vendored
 $ printf '```abnf\nr = "a"\n```\n' > d.md
 $ printf 'a\n' | env -i PATH="$PATH" PYTHONNOUSERSITE=1 rfc-abnf d.md r; echo $?
 0
-$ test -f "$(dirname "$(command -v rfc-abnf)")/vendor/abnf/VERSION"; echo $?
-0
+$ rfc-abnf --version | grep -cE '^abnf [0-9.]+ sha256:[0-9a-f]{64} vendor:.*skill/vendor/abnf$'
+1
 ```
 
 ### Matching
 
 `rfc-abnf <doc.md> <rule>` MUST read the document grammar of `<doc.md>`,
-read inputs from standard input one per line, and exit 0 when every
-input matches `<rule>`; otherwise it exits 1 and names the first input
-that does not match. Matching MUST implement RFC 5234 and RFC 7405
-(`%s` case-sensitive and `%i` case-insensitive strings; plain quoted
-strings are case-insensitive), with the RFC 5234 core rules (`ALPHA`,
-`BIT`, `CHAR`, `CR`, `CRLF`, `CTL`, `DIGIT`, `DQUOTE`, `HEXDIG`, `HTAB`,
-`LF`, `LWSP`, `OCTET`, `SP`, `VCHAR`, `WSP`) predefined unless the
+read inputs from standard input, and exit 0 when every input matches
+`<rule>`; otherwise it exits 1 and names the first input that does not
+match. Matching MUST implement RFC 5234 and RFC 7405 (`%s` case-sensitive
+and `%i` case-insensitive strings; plain quoted strings are
+case-insensitive), with the RFC 5234 core rules predefined unless the
 document redefines them, and MUST accept an input if and only if some
-derivation of the rule produces the whole input. [R-abnf-match]
+derivation of the rule produces the whole input — including the empty
+input, when the rule derives it. [R-abnf-match]
 
 ```transcript @R-abnf-match
 $ cat > d.md <<'EOF'
@@ -108,50 +110,90 @@ $ printf 'ab  cd\n' | rfc-abnf d.md pair; echo $?
 1
 ```
 
-Unordered alternation, the case a first-match matcher gets wrong:
+The cases a careless matcher gets wrong — unordered alternation, a
+repetition that has to give characters back, and an empty alternative:
 
 ```transcript @R-abnf-match
 $ cat > d.md <<'EOF'
 > ```abnf
-> r = ( "a" / "ab" ) "c"
+> alt   = ( "a" / "ab" ) "c"
+> giver = *"a" "a"
+> empty = "(" empty ")" / ""
 > ```
 > EOF
-$ printf 'abc\n' | rfc-abnf d.md r; echo $?
+$ printf 'abc\n' | rfc-abnf d.md alt; echo $?
+0
+$ printf 'a\n' | rfc-abnf d.md giver; echo $?
+0
+$ printf '(())\n' | rfc-abnf d.md empty; echo $?
+0
+$ printf '' | rfc-abnf -z d.md empty; echo $?
 0
 ```
 
-`--whole` MUST treat all of standard input as one input, for values that
-span lines. Rules MUST resolve across all `abnf` blocks of the document,
-so a grammar split around prose is one grammar.
+**Input framing.** By default each input is one line, with only the
+terminating line feed removed. `-z` MUST read NUL-separated inputs, so an
+input can contain CR, LF, or any octet but NUL; `--whole` MUST treat all
+of standard input as one input. Rules resolve across all `abnf` blocks of
+the document, so a grammar split around prose is one grammar.
+
+**Unsupported grammars.** The matcher decides what it can decide and
+says so about the rest. `rfc-abnf` MUST refuse a document whose grammar
+contains a left-recursive rule (direct or indirect), an unproductive
+rule (one that derives no finite string, such as `r = r`), or a
+prose value (`<...>`), with exit 2 naming the rule and the reason, before
+matching anything. These are rejected rather than half-supported: a
+matcher that loops or silently fails on them would make the oracle wrong
+exactly where nobody looks. [R-abnf-unsupported]
+
+```transcript @R-abnf-unsupported
+$ printf '```abnf\nr = r "a" / "b"\n```\n' > left.md
+$ printf 'b\n' > in
+$ rfc-abnf left.md r < in
+! rfc-abnf: unsupported grammar: r is left-recursive
+? 2
+$ printf '```abnf\nr = r\n```\n' > loop.md
+$ rfc-abnf loop.md r < in
+! rfc-abnf: unsupported grammar: r derives no finite string
+? 2
+```
 
 ### Level 1 — witness tables
 
 An evidence table whose marker carries `abnf=<rule>`
 (`<!-- evidence: @R-<slug> abnf=<rule> -->`) is a witness table. Its rows
 MUST have the columns `Input` and `Valid`; `Input` is a code span holding
-the input literally (a `|` written `\|`), `Valid` is `yes` or `no`. The
-`abnf` adapter MUST test every row against `<rule>` of the same
-document's grammar and fail the block on the first row whose verdict
-differs, naming it. Further columns are commentary and are ignored.
-[R-abnf-witness]
+the input, with `\|` for `|` and `\xHH` for any other octet a code span
+cannot show (CR, LF, NUL); `Valid` is `yes` or `no`. The `abnf` adapter
+MUST test every row against `<rule>` of the same document's grammar and
+fail the block on the first row whose verdict differs, naming it. Further
+columns are commentary. [R-abnf-witness]
 
 ```transcript @R-abnf-witness
 $ cat > d.md <<'EOF'
 > ```abnf
 > word = 1*ALPHA
+> line = 1*ALPHA CRLF
 > ```
 > <!-- evidence: @R-w abnf=word -->
 > | Input | Valid |
 > |---|---|
 > | `abc` | yes |
 > | `a1` | no |
+> <!-- evidence: @R-l abnf=line -->
+> | Input | Valid |
+> |---|---|
+> | `ab\x0D\x0A` | yes |
+> | `ab\x0A` | no |
 > EOF
 $ rfc-abnf --witness d.md; echo $?
 0
 ```
 
-A witness table states what the prose intends and the grammar is held to
-it; rows are written from the prose, not by running the grammar.
+Witness rows are written from the prose, by someone other than whoever
+wrote the generator, and never by running the grammar: they are the
+check that does not share the matcher's or the generator's reading of
+the grammar.
 
 ### Level 2 — output conformance
 
@@ -159,10 +201,21 @@ A transcript that asserts the shape of an implementation's output SHOULD
 pipe that output through `rfc-abnf "$RFC_DOC" <rule>` in place of a
 regular expression or a literal pattern. [R-abnf-output]
 
+```transcript @R-abnf-output
+$ cat > d.md <<'EOF'
+> ```abnf
+> id = 1*DIGIT "-" 1*ALPHA
+> ```
+> EOF
+$ printf '42-abc\n7-x\n' > out
+$ rfc-abnf d.md id < out; echo $?
+0
+```
+
 The transcript runner MUST export `RFC_DOC`, the absolute path of the
 document a block was tangled from, so a transcript can test output
-against its own document's grammar without naming a path that depends
-on where the series is checked out. [R-abnf-doc-env]
+against its own document's grammar without naming a path that depends on
+where the series is checked out. [R-abnf-doc-env]
 
 ```transcript @R-abnf-doc-env
 $ test -f "$RFC_DOC"; echo $?
@@ -171,53 +224,85 @@ $ grep -c '^# draft-ndn-abnf-conformance-00:' "$RFC_DOC"
 1
 ```
 
-```transcript @R-abnf-output
-$ cat > d.md <<'EOF'
-> ```abnf
-> id = 1*DIGIT "-" 1*ALPHA
-> ```
-> EOF
-$ printf '42-abc\n7-x\n' | rfc-abnf d.md id; echo $?
-0
-```
-
 ### Level 3 — generation and differential checks
 
-Generation walks the vendored package's parsed grammar — concatenation,
-alternation, repetition with its bounds, options, literals and their case
-rules, and rule references — and every string it produces is checked by
-the same matcher before it is printed.
+Level 3 is built only after levels 1 and 2 pass on every grammar in the
+series, so the matcher is trusted before the generator is checked
+against it.
 
-`rfc-abnf <doc> <rule> --generate N` MUST print N strings that match
-`<rule>`, and `--near-miss N` MUST print up to N strings that `<rule>`
+**Generation.** `rfc-abnf <doc> <rule> --generate N` MUST print up to N
+distinct strings that match `<rule>`, walking the vendored package's
+parsed grammar (concatenation, alternation, repetition, options,
+literals with their case rules, rule references) and checking each
+string with the matcher before printing it. For every bounded
+repetition it MUST include its minimum and maximum counts among the
+samples, and for an unbounded one its minimum and minimum plus
+`--max-repeat`, so lengths at the edges of the grammar are exercised and
+not only lengths near the middle. When the rule's language has fewer than
+N strings within the bounds, or `--max-attempts` runs out, it prints what
+it found and reports `exhausted: <found> of <N>` on standard error with
+exit 0. [R-abnf-generate]
+
+**Near-misses.** `--near-miss N` MUST print up to N strings the rule
 rejects, each derived from a generated valid string by one mutation:
-deleting, duplicating, or replacing one character, where a replacement
-takes a value just outside a numeric range or terminal set the grammar
-uses. Every printed string MUST be verified against the grammar before it
-is printed, so a valid string never appears among near-misses. Output
-MUST be a pure function of the document grammar, the rule, N, and
-`--seed` (default 0), so a failure reproduces. [R-abnf-generate]
+deleting, duplicating, or replacing one character (a replacement takes a
+value just outside a numeric range or terminal set the grammar uses);
+dropping one element of a concatenation; or swapping two adjacent
+elements of a concatenation. Each is checked by the matcher and printed
+only if rejected. It MUST report `near-misses: <found> from <tried>
+candidates` on standard error, and with `--require-near-miss` exit 1 when
+it found none, which evidence for a fixture whose grammar has near-misses
+MUST use. [R-abnf-near-miss]
 
 ```transcript @R-abnf-generate
 $ cat > d.md <<'EOF'
 > ```abnf
-> id = 1*DIGIT "-" 1*ALPHA
+> id  = 1*DIGIT "-" 1*ALPHA
+> two = "a" / "b"
 > ```
 > EOF
-$ rfc-abnf d.md id --generate 20 | rfc-abnf d.md id; echo $?
+$ rfc-abnf -z d.md id --generate 20 > valid
+$ rfc-abnf -z d.md id < valid; echo $?
 0
-$ rfc-abnf d.md id --near-miss 20 | while read -r s; do printf '%s\n' "$s" | rfc-abnf d.md id 2>/dev/null && echo "accepted: $s"; done | wc -l
-0
-$ test "$(rfc-abnf d.md id --generate 5 --seed 3)" = "$(rfc-abnf d.md id --generate 5 --seed 3)"; echo $?
+$ rfc-abnf d.md two --generate 5 2>&1 >/dev/null
+exhausted: 2 of 5
+$ rfc-abnf d.md id --generate 5 --seed 3 > a; rfc-abnf d.md id --generate 5 --seed 3 > b
+$ cmp -s a b; echo $?
 0
 ```
 
-`rfc-abnf <doc> <rule> --against '<command>'` MUST run the command once
-per generated valid string and once per near-miss, passing the string on
-standard input, and MUST exit 0 only when the command exits 0 for every
-valid string and nonzero for every near-miss; otherwise it exits 1 and
-prints the first disagreeing input and which side accepted it.
-[R-abnf-differential]
+```transcript @R-abnf-near-miss
+$ cat > d.md <<'EOF'
+> ```abnf
+> claim = "x:" 1*DIGIT "/" 1*ALPHA
+> ```
+> EOF
+$ rfc-abnf -z d.md claim --near-miss 30 --require-near-miss > misses 2>report; echo $?
+0
+$ rfc-abnf -z d.md claim < misses >/dev/null 2>&1; echo $?
+1
+$ grep -cE '^near-misses: [1-9][0-9]* from [0-9]+ candidates$' report
+1
+```
+
+**Reproducibility.** Generated output MUST be a pure function of the
+document grammar, the rule, every generation option (`--seed`, N,
+`--max-repeat`, `--max-depth`, `--max-length`, `--max-attempts`), and the
+generator's version, which `rfc-abnf --version` prints; a failure
+reported with those values reproduces exactly.
+
+**Differential checks.** `rfc-abnf <doc> <rule> --against '<command>'`
+MUST run the command on every generated valid string and every
+near-miss, passing the string's exact bytes on standard input, and
+classify each run as **accept** (exit 0), **reject** (exit 1), or
+**failure** (any other exit, a signal, or exceeding `--timeout`). It exits
+0 only when every valid string is accepted and every near-miss rejected;
+1 on a disagreement, printing the input and which side accepted it; and
+3 on any failure, printing the input and how the command failed — a
+crash is never counted as a rejection. With `--batch`, the command reads
+all samples NUL-separated on standard input and writes one `accept` or
+`reject` line per sample, in order, for parsers that would be slow to
+start once per sample. [R-abnf-differential]
 
 ```transcript @R-abnf-differential
 $ cat > d.md <<'EOF'
@@ -229,40 +314,44 @@ $ rfc-abnf d.md id --against 'grep -qE "^[0-9]+-[A-Za-z]+$"'; echo $?
 0
 $ rfc-abnf d.md id --against 'grep -qE "^[0-9]*-[A-Za-z]+$"' 2>&1 | head -1
 parser accepts a near-miss the grammar rejects: "-a"
+$ rfc-abnf d.md id --against 'exit 7' >/dev/null 2>&1; echo $?
+3
 ```
-
-A grammar with no near-misses (a rule that accepts every string over its
-alphabet) prints none and is not an error; `--against` then checks the
-valid side only and says so.
 
 ### Configuration
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `--seed` | Integer | `0` | Seed for generation; fixed by default so runs reproduce. |
-| `--max-repeat` | Integer | `3` | Extra repetitions generation adds beyond a repetition's minimum for an unbounded `*`. Small, because coverage comes from N, not from length. |
-| `--max-depth` | Integer | `16` | Rule-expansion depth during generation; a branch that would exceed it takes its shortest alternative. Bounds recursive grammars. |
-| `--generate` / `--near-miss` with `--against` | Integer | `100` each | Strings per side of a differential check. |
+| `--seed` | Integer | `0` | Seed for generation; fixed so runs reproduce. |
+| `--max-repeat` | Integer | `3` | Repetitions beyond the minimum that generation uses for an unbounded `*`. |
+| `--max-depth` | Integer | `16` | Rule-expansion depth during generation; past it, generation takes the alternative with the shortest derivation (always defined, since unproductive rules are refused). |
+| `--max-length` | Integer | `256` | Longest string generation emits, in octets; bounds output size and large mandatory repetitions. |
+| `--max-attempts` | Integer | `50 × N` | Candidate strings generation or mutation tries before reporting exhaustion. |
+| `--generate` / `--near-miss` with `--against` | Integer | `100` each | Samples per side of a differential check. |
+| `--timeout` | Duration | `10s` | Per-run limit for `--against`; exceeding it is a failure, not a rejection. |
 
 ### Errors
 
 | Condition | Exit | Recovery |
 |---|---|---|
 | Input does not match | 1 | The message names the input; fix the output or the grammar. |
-| Unknown rule | 2 | Name a rule defined in the document grammar. |
-| Document has no `abnf` block | 2 | The document defines no grammar to test against. |
-| Undefined rule reference | 2 | Define it; `rfc-lint` reports the same error. |
-| Differential disagreement | 1 | The message names the input and which side accepted it. |
 | Witness row disagrees | 1 | Fix the grammar, or the row if the prose was misread. |
+| Differential disagreement | 1 | The message names the input and which side accepted it. |
+| No near-miss found under `--require-near-miss` | 1 | Raise `--max-attempts`, or the fixture's grammar has none. |
+| Unknown rule, no `abnf` block, undefined reference | 2 | Name or define the rule; `rfc-lint` reports undefined references too. |
+| Unsupported grammar (left recursion, unproductive rule, prose value) | 2 | Restate the rule without it. |
+| Vendored matcher missing, or loaded from elsewhere | 2 | Restore `skill/vendor/abnf/`. |
+| `--against` command crashes, is signalled, or times out | 3 | The parser failed; that is not a verdict. |
 
 ### Rollout
 
 Levels 1 and 2 are delivered first; the claim grammar of
-draft-ndn-fsm-session-01 is their first user. Level 3 then applies first
-to the parsers whose grammars this series already states: the info
-string of draft-ndn-snippet-attributes-00 (parsed by `rfc-snippets`),
-the fsm statements (parsed by `adapters/fsm` and `rfc-lint`), and the
-claim (read back by `rfc-fsm-exec --audit`).
+draft-ndn-fsm-session-01 is their first user. Level 3 follows once every
+grammar in the series passes levels 1 and 2, applied first to the parsers
+whose grammars the series already states: the info string of
+draft-ndn-snippet-attributes-00 (parsed by `rfc-snippets`), the fsm
+statements (parsed by `adapters/fsm` and `rfc-lint`), and the claim (read
+back by `rfc-fsm-exec --audit`).
 
 ## Alternatives Considered
 
@@ -288,11 +377,16 @@ another library.
 
 ### Why not write a matcher?
 
-The vendored `abnf` package already decides RFC 5234 and RFC 7405
-correctly, including unordered alternation and repetition that must give
-back characters (`*"a" "a"` matches `a`). Writing a second one would add
-a component to verify without adding capability; the generator is the
-only part no candidate provides.
+The vendored `abnf` package decides RFC 5234 and RFC 7405 correctly for
+the grammars this series writes, including unordered alternation and
+repetition that must give back characters (`*"a" "a"` matches `a`).
+Tested before this draft, it fails on two things: left recursion
+(`r = r "a" / "b"` raises a recursion error) and an empty alternative
+(`r = "(" r ")" / ""` rejects the empty input). The first is refused up
+front as an unsupported grammar; the second is a defect fixed in the
+vendored copy and recorded in `PATCHES`. Writing a second matcher would
+add a component to verify without adding capability; the generator is
+the only part no candidate provides.
 
 ### Why not generate with exrex or hypothesis?
 
@@ -325,11 +419,11 @@ against each other.
 
 `rfc-abnf --against` executes a command written in the document, the same
 trust posture as a transcript, and runs under the sandbox provider of
-draft-ndn-sandbox-providers-00 when invoked from evidence. Matching and
-generation are bounded: generation by `--max-depth` and `--max-repeat`,
-and matching by memoized search over input positions, so a recursive or
-ambiguous grammar cannot make the tool run without bound on finite
-input. Inputs are never evaluated, only matched.
+draft-ndn-sandbox-providers-00 when invoked from evidence. Every
+path is bounded: generation by `--max-depth`, `--max-repeat`,
+`--max-length`, and `--max-attempts`; matching by refusing left-recursive
+and unproductive rules before it starts; and `--against` by `--timeout`.
+No grammar or parser can make the tool run without bound. Inputs are never evaluated, only matched.
 
 ## References
 
