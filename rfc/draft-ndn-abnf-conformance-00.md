@@ -129,19 +129,39 @@ $ printf '(())\n' | rfc-abnf d.md empty; echo $?
 0
 $ printf '' | rfc-abnf --whole d.md empty; echo $?
 0
-$ printf '' | rfc-abnf d.md giver; echo $?
+```
+
+**Input framing.** Inputs are records, and every record is the bytes
+before a terminator. By default the terminator is LF, removed: a lone LF
+is one empty record, `a` LF LF is the records `a` and the empty string,
+and input that does not end with LF has a final record of the bytes
+after the last one. `-z` MUST use NUL as the terminator instead, so a
+record can contain CR, LF, or any octet but NUL. `--length` MUST read
+records as `<decimal length>:<bytes>`, one after another with nothing
+between them, so a record can hold any octet. `--whole` MUST read all of
+standard input as exactly one record. Zero records MUST be an error
+(exit 2, "no input"), so evidence cannot pass by testing nothing. The
+same three framings apply to everything `rfc-abnf` prints (see
+Generation). [R-abnf-framing]
+
+```transcript @R-abnf-framing
+$ printf '```abnf\nany = *OCTET\nempty = ""\n```\n' > d.md
+$ printf '\n' > lone-lf; printf 'a\n\n' > two; printf '3:a\nb2:\0x' > framed; : > nothing
+$ rfc-abnf d.md empty < lone-lf; echo $?
+0
+$ rfc-abnf --reject d.md empty < two >/dev/null 2>&1; echo $?
+1
+$ rfc-abnf --length --verdicts d.md any < framed
+accept
+accept
+$ rfc-abnf d.md any < nothing; echo $?
 ! rfc-abnf: no input
 2
 ```
 
-**Input framing.** Inputs are records. By default a record ends at each
-LF, which is removed; a final record without a trailing LF is still a
-record, and a trailing LF does not begin an empty one. `-z` MUST end
-records at NUL instead, so a record can contain CR, LF, or any octet but
-NUL. `--whole` MUST read all of standard input as exactly one record,
-possibly empty — the only way to test the empty input. Zero records MUST
-be an error (exit 2, "no input"), so evidence cannot pass by testing
-nothing. `--reject` MUST invert the verdict: exit 0 only when every
+`--verdicts` MUST print one line per record, `accept` or `reject`, in
+order, instead of stopping at the first mismatch, so `rfc-abnf` can
+serve as the batch parser of a differential check. `--reject` MUST invert the verdict: exit 0 only when every
 record fails to match, so a set of near-misses is checked in full and
 not only up to its first. Rules resolve across all `abnf` blocks of
 the document, so a grammar split around prose is one grammar.
@@ -168,22 +188,31 @@ $ rfc-abnf loop.md r < in
 ```
 
 **Matching budget.** Matching MUST terminate for every supported grammar
-and input: a repetition iteration that consumes nothing ends the
-repetition, so a nullable element under `*` cannot loop, and
-`--max-steps` bounds the work spent on one record, so an ambiguous
-grammar over a long input cannot run without bound. Exhausting the
-budget is its own outcome — exit 4, naming the record — never a match
-and never a rejection. [R-abnf-budget]
+and input without changing the language it decides. A repetition takes
+an iteration that consumes nothing only while it still needs iterations
+to reach its minimum count — so `2("")` matches the empty input — and
+never beyond it, so a nullable element under `*` cannot loop; such an
+iteration past the minimum would add no string. `--max-steps` bounds the
+work spent on one record, so an ambiguous grammar over a long input
+cannot run without bound. Exhausting the budget is its own outcome —
+exit 4, with `record <n>: matching budget exhausted` on standard error —
+never a match and never a rejection. [R-abnf-budget]
 
 ```transcript @R-abnf-budget
-$ printf '```abnf\nr = *( *"a" ) "b"\n```\n' > nullable.md
+$ printf '```abnf\nr = *( *"a" ) "b"\nexact = 2("")\nmixed = *( "" / "a" ) "b"\n```\n' > nullable.md
 $ printf 'aaab\n' > in
 $ rfc-abnf nullable.md r < in; echo $?
 0
+$ printf '' | rfc-abnf --whole nullable.md exact; echo $?
+0
+$ printf 'aab\n' | rfc-abnf nullable.md mixed; echo $?
+0
 $ printf '```abnf\nr = *( "a" / "aa" ) "b"\n```\n' > ambiguous.md
 $ printf 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaac\n' > long
-$ rfc-abnf --max-steps 10 ambiguous.md r < long; echo $?
+$ rfc-abnf --max-steps 10 ambiguous.md r < long 2> err; echo $?
 4
+$ grep -c 'record 1: matching budget exhausted' err
+1
 ```
 
 ### Level 1 — witness tables
@@ -271,16 +300,24 @@ could not include is reported on standard error as
 `uncovered: <rule> <count>`. When the rule's language has fewer than
 N strings within the bounds, or `--max-attempts` runs out, it prints what
 it found and reports `exhausted: <found> of <N>` on standard error with
-exit 0. [R-abnf-generate]
+exit 0: generation that comes up short has still done its job, and the
+evidence that needs samples decides whether a shortfall fails it. Output
+uses the framing of Input framing; a string containing the active
+terminator cannot be printed in LF or NUL framing, so it is skipped and
+counted in an `unrepresentable: <n>` report, and `--length` represents
+every string. [R-abnf-generate]
 
 **Near-misses.** `--near-miss N` MUST print up to N strings the rule
 rejects, each derived from a generated valid string by one mutation:
-deleting, duplicating, or replacing one character (a replacement takes a
-value just outside a numeric range or terminal set the grammar uses);
-dropping one element of a concatenation; or swapping two adjacent
-elements of a concatenation. A mutation that does not apply — dropping
+inserting, deleting, duplicating, or replacing one character (an
+inserted or replacing character takes a value just outside a numeric
+range or terminal set the grammar uses); dropping one element of a
+concatenation; or swapping two adjacent elements of a concatenation. A
+mutation that does not apply — deleting from the empty string, dropping
 from a one-element concatenation, swapping identical adjacent elements —
-is skipped and not counted as a candidate. Each candidate is checked by
+produces no candidate, but every mutation selection, applicable or not,
+counts against `--max-attempts`, so a grammar where few mutations apply
+still ends. Each candidate is checked by
 the matcher and printed only if rejected. It MUST report `near-misses: <found> from <tried>
 candidates` on standard error, and with `--require-near-miss` exit 1 when
 it found none, which evidence for a fixture whose grammar has near-misses
@@ -319,6 +356,11 @@ $ rfc-abnf -z --reject d.md claim < misses; echo $?
 0
 $ grep -cE '^near-misses: [1-9][0-9]* from [0-9]+ candidates$' report
 1
+$ printf '```abnf\nnone = ""\n```\n' > empty.md
+$ rfc-abnf empty.md none --near-miss 5 --require-near-miss --length > misses; echo $?
+0
+$ rfc-abnf --length --reject empty.md none < misses; echo $?
+0
 ```
 
 **Reproducibility.** Generated output MUST be a pure function of the
@@ -339,12 +381,15 @@ accepted, and every near-miss rejected;
 1 on a disagreement, printing the input and which side accepted it; and
 3 on any failure, printing the input and how the command failed — a
 crash is never counted as a rejection. With `--batch`, the command is
-started once and reads every sample on standard input as
-`<decimal length>:<bytes>`, so a sample can hold any octet, and writes
-one line per sample, in order, that is exactly `accept` or `reject`. Any
+started once and reads every sample on standard input in `--length`
+framing — `<decimal length>:<bytes>` records with nothing between them —
+so a sample can hold any octet, and writes one line per sample, in
+order, that is exactly `accept` or `reject`. Any
 other reply — a missing or extra line, a malformed line, a nonzero exit
 of the batch command, or the whole batch exceeding `--timeout` — is a
-failure (exit 3). [R-abnf-differential]
+failure (exit 3). Generation running short during `--against` is
+reported and is not itself a failure; a side it leaves with no samples
+is (exit 1, above). [R-abnf-differential]
 
 ```transcript @R-abnf-differential
 $ cat > d.md <<'EOF'
@@ -362,6 +407,30 @@ $ rfc-abnf d.md id --against 'exit 7' >/dev/null 2>&1; echo $?
 3
 ```
 
+The failure modes — a side with no samples, binary samples through a
+batch, a malformed batch reply, and a timeout:
+
+```transcript @R-abnf-differential
+$ cat > d.md <<'EOF'
+> ```abnf
+> all  = *OCTET
+> bin  = %x00 1*%x41-42 %x0A
+> ```
+> EOF
+$ rfc-abnf d.md all --against 'true' >/dev/null 2> err; echo $?
+1
+$ grep -c 'no near-miss' err
+1
+$ rfc-abnf d.md all --allow-no-near-miss --against 'true' >/dev/null 2>&1; echo $?
+0
+$ rfc-abnf d.md bin --batch --against "rfc-abnf --length --verdicts $PWD/d.md bin"; echo $?
+0
+$ rfc-abnf d.md bin --batch --against 'echo maybe' >/dev/null 2>&1; echo $?
+3
+$ rfc-abnf d.md bin --timeout 1s --against 'sleep 5' >/dev/null 2>&1; echo $?
+3
+```
+
 ### Configuration
 
 | Key | Type | Default | Description |
@@ -372,6 +441,8 @@ $ rfc-abnf d.md id --against 'exit 7' >/dev/null 2>&1; echo $?
 | `--max-length` | Integer | `256` | Longest string generation emits, in octets; bounds output size and large mandatory repetitions. |
 | `--max-attempts` | Integer | `50 × N` | Candidate strings generation or mutation tries before reporting exhaustion. |
 | `--generate` / `--near-miss` with `--against` | Integer | `100` each | Samples per side of a differential check. |
+| `--length` / `-z` / `--whole` | Framing | LF records | Input and output framing (see Input framing). |
+| `--verdicts` | Flag | off | Print `accept`/`reject` per record instead of stopping at the first mismatch. |
 | `--timeout` | Duration | `10s` | Per-run limit for `--against` (per batch with `--batch`); exceeding it is a failure, not a rejection. |
 | `--max-steps` | Integer | `1000000` | Matcher steps allowed per record; exceeding it is exit 4, never a verdict. |
 
@@ -471,8 +542,11 @@ draft-ndn-sandbox-providers-00 when invoked from evidence. Generation is
 bounded by `--max-depth`, `--max-repeat`, `--max-length`, and
 `--max-attempts`; matching by `--max-steps`, after refusing
 left-recursive and unproductive rules; and `--against` by `--timeout`.
-Exhausting any budget is reported as its own outcome, never as a match,
-a rejection, or a pass. Inputs are never evaluated, only matched.
+Generation that runs out of budget ends early, reports its shortfall,
+and still exits 0; evidence that needs samples — a differential,
+`--require-near-miss` — fails when the shortfall leaves it without them.
+Exhausting the matching budget is exit 4. No budget exhaustion is ever
+reported as a match or a rejection. Inputs are never evaluated, only matched.
 
 ## References
 
