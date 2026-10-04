@@ -187,7 +187,7 @@ way to object is a competing draft.
 
 ```
 rfc/      the process's own RFC series (process/practice documents only)
-skill/    the agent skill: SKILL.md, template.md, and the five tools
+skill/    the agent skill: SKILL.md, references/, template.md, and the rfc-* tools
 ```
 
 ## License and attribution
