@@ -340,7 +340,7 @@ held while the key is recorded and not when the check is later
 rechecked — a finished run's checks recheck without any lease. `pr-lease run` MUST renew the lease every third of
 `pr-triage.lease` for as long as the command runs, not only before it
 starts; if a renewal finds the lease taken, it MUST stop the command and
-exit nonzero, so nothing is recorded. Acquisition writes a claim event, then reads the PR's owner
+every process it started, and exit nonzero, so nothing is recorded. Acquisition writes a claim event, then reads the PR's owner
 events back in ledger order: the earliest live claim wins, and a losing
 instance MUST release its own claim at once, so a lost race leaves no
 stale claim behind. A crashed holder's lease simply expires.
@@ -457,7 +457,7 @@ of checking now. A refusal exits nonzero and records nothing.
 | `pr-merge` (`merged`) | held | Authorization from fresh forge state (Merge policy), every attempt, including a resumed one — never an earlier observation. | Receipt: the merge and its authorization. |
 | `pr-merged` (`human-merged`) | held | Observes the forge only and acts on nothing: exits 0 when the PR is merged there. | Receipt: the merge commit. |
 | `pr-merge --held` (`merge-held`) | held | The same authorization; exits 0 only when merging is not allowed, and merges nothing. | Receipt: why merging is not allowed. |
-| `pr-post` (`posted`) | held | That the draft's hash matches the `draft` attachment and the operator approved it; posts through `comment-post --approved`. | `posted` and the ledger fields `posted=<comment ID>`, `handled=<activity ID>`. |
+| `pr-post` (`posted`) | held | That the draft's hash matches the `draft` attachment and the operator approved it; then looks on the forge for a comment on the PR whose body hashes to the draft's, and if one exists records it without posting, so a post whose recording was interrupted, or one the operator made by hand, is observed and never repeated; otherwise posts through `comment-post --approved`. | `posted` and the ledger fields `posted=<comment ID>`, `handled=<activity ID>`. |
 | `pr-wait <obs>` | held at start | Runs `rfc-fsm-exec --record <obs>` every `pr-triage.poll-interval`, renewing the lease between attempts. | The observation when it appears; after `pr-triage.poll-limit` attempts or on a lost lease, it runs `rfc-fsm-exec --record wait-ended`. |
 | `pr-wait-ended` (`wait-ended`) | none | Exits 0 when this run's poll limit is spent or its lease is lost — a recovery record, so it needs no lease. | Receipt: which. |
 | `pr-ws done` (`cleaned`) | held | That this instance holds the PR's lease. | Receipt: the removed workspace. |
@@ -518,6 +518,21 @@ $ for c in review mergeable; do $S --record $c > /dev/null 2>&1 && echo $c; done
 mergeable
 ```
 
+A post whose recording was lost is observed on the next attempt, not
+posted again:
+
+```transcript @R-pr-wrappers
+$ pr-fixture . --pr 7 --at AWAIT_APPROVAL > /dev/null
+$ S="rfc-fsm-exec .pr-triage/session.fsm --state .git/session"
+$ python3 -c 'import json;print(json.dumps({"id":"c1","body":open("draft.md").read()}))' >> forge-comments.jsonl
+$ $S --record posted > /dev/null; echo $?
+0
+$ wc -l < forge-comments.jsonl | tr -d ' '
+1
+$ cat posted-id
+c1
+```
+
 This limits what an agent does through the skill, not what it can do: an
 agent can still run `git push` by hand, and nothing in this process
 detects it. The wrappers make the checked path the easy one; they do not
@@ -574,10 +589,9 @@ $ printf '{"number":7,"state":"MERGED","head":"%s","mergeCommit":"m1"}\n' "$(cat
 $ PR_FORGE_FIXTURE=forge-state.json $S --record human-merged > /dev/null 2>&1; echo $?
 1
 $ jj config set --repo pr-triage.poll-interval 0s
-$ (sleep 1; cp merged.json forge-now.json) & cp forge-state.json forge-now.json
-$ PR_FORGE_FIXTURE=forge-now.json pr-wait human-merged --pr 7; echo $?
+$ PR_FORGE_FIXTURE=forge-state.json:merged.json pr-wait human-merged --pr 7; echo $?
 0
-$ wait; $S MERGED | grep -c "LEGAL"
+$ $S MERGED | grep -c "LEGAL"
 1
 ```
 
@@ -669,7 +683,7 @@ key,...] [--via requested] [--unbound] [--verify-command <cmd>] [--fresh]`, whic
 in for the forge, a recorded forge state for the PR in `forge-state.json` and a green, approved one in `forge-green.json` (served through
 `PR_FORGE_FIXTURE`), the ledger initialized by `pr-init`, a PR workspace
 at `ws/pr-<N>`, fixture commands for every check and observation key,
-the PR's head commit in the file `head`, and, after `pr-post`, the posted comment's ID in `posted-id`. With `--at STATE` it walks a
+the PR's head commit in the file `head`, the approved draft at `AWAIT_APPROVAL` in `draft.md`, every comment posted to the stand-in forge as one line of `forge-comments.jsonl`, and, after `pr-post`, the posted comment's ID in `posted-id`. `PR_FORGE_FIXTURE` may name several state files separated by `:`; each run of a wrapper reads the next, and the last repeats. With `--at STATE` it walks a
 session and its PR run to that state through the executor, recording the
 evidence each guard on the way needs, so the record is one an agent
 could have produced; `--with` records further keys at that state, and

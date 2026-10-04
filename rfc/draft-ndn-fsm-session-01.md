@@ -601,24 +601,33 @@ nothing the original recording needed beyond the code. [R-recheck]
 
 **Record wrappers.** A process MAY supervise recording without changing
 what a check computes: when `fsm.record-wrap.<key>` is configured, the
-executor runs the key's command under it — `<wrapper> <command>` — when
-recording, and MUST NOT use it when rechecking. A wrapper that exits
-nonzero records nothing. This keeps a check a pure function of its
+executor runs the key's command under it when recording, and MUST NOT
+use it when rechecking. A key's command is shell text and always runs
+as `sh -c <command>`, the whole text one argument, in the checkout it
+describes; a wrapper is shell text too, and the executor runs
+`sh -c '<wrapper> "$@"' fsm sh -c <command>`, so the wrapper receives
+the complete command as its arguments — every stage of a compound
+command runs inside it — and its working directory is the command's. A
+wrapper that supervises MUST cover the command's descendants, not only
+the process it starts. A wrapper that exits nonzero records nothing. This keeps a check a pure function of its
 revision while letting a process, for example, hold a lease for as long
 as the recording runs. [R-record-wrap]
 
 ```transcript @R-record-wrap
 $ git init -q . && git commit -q --allow-empty -m seed
 $ git config --local fsm.check.verify "true"
-$ git config --local fsm.record-wrap.verify "sh -c 'test -e allowed && exec \"\$@\"' wrap"
+$ allow="$(mktemp -d)/allowed"
+$ git config --local fsm.record-wrap.verify "test -e $allow && exec"
 $ printf 'initial A\nA -> B\nterminal B\ncheck verify\nguard A -> B: verify\n' > m.fsm
 $ git add m.fsm && git commit -q -m machine
 $ rfc-fsm-exec m.fsm --state .git/run > /dev/null
 $ rfc-fsm-exec m.fsm --state .git/run --record verify > /dev/null 2>&1; echo $?
 1
-$ touch allowed && rfc-fsm-exec m.fsm --state .git/run --record verify > /dev/null; echo $?
+$ rfc-fsm-exec m.fsm --state .git/run B > /dev/null 2>&1; echo $?
+1
+$ touch "$allow" && rfc-fsm-exec m.fsm --state .git/run --record verify > /dev/null; echo $?
 0
-$ rfc-fsm-exec m.fsm --state .git/run B > /dev/null && rm allowed
+$ rfc-fsm-exec m.fsm --state .git/run B > /dev/null && rm "$allow"
 $ rfc-fsm-exec m.fsm --state .git/run --audit --recheck > /dev/null; echo $?
 0
 ```
