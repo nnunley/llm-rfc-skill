@@ -140,9 +140,11 @@ record can contain CR, LF, or any octet but NUL. `--length` MUST read
 records as `<decimal length>:<bytes>`, one after another with nothing
 between them, so a record can hold any octet. `--whole` MUST read all of
 standard input as exactly one record. Zero records MUST be an error
-(exit 2, "no input"), so evidence cannot pass by testing nothing. The
-same three framings apply to everything `rfc-abnf` prints (see
-Generation). [R-abnf-framing]
+(exit 2, "no input"), so evidence cannot pass by testing nothing. LF, `-z`,
+and `--length` framing also apply to the strings `rfc-abnf` prints (see
+Generation); `--whole` is input-only, because one record cannot carry
+several samples, and a generation request with `--whole` MUST be refused
+(exit 2). [R-abnf-framing]
 
 ```transcript @R-abnf-framing
 $ printf '```abnf\nany = *OCTET\nempty = ""\n```\n' > d.md
@@ -156,6 +158,9 @@ accept
 accept
 $ rfc-abnf d.md any < nothing; echo $?
 ! rfc-abnf: no input
+2
+$ rfc-abnf --whole d.md any --generate 2; echo $?
+! rfc-abnf: --whole cannot frame several samples
 2
 ```
 
@@ -457,7 +462,7 @@ $ rfc-abnf d.md bin --timeout 1s --against 'sleep 5' >/dev/null 2>&1; echo $?
 | `--max-length` | Integer | `256` | Longest string generation emits, in octets; bounds output size and large mandatory repetitions. |
 | `--max-attempts` | Integer | `50 × N` | Candidate strings generation or mutation tries before reporting exhaustion. |
 | `--generate` / `--near-miss` with `--against` | Integer | `100` each | Samples per side of a differential check. |
-| `--length` / `-z` / `--whole` | Framing | LF records | Input and output framing (see Input framing). |
+| `--length` / `-z` / `--whole` | Framing | LF records | Input framing; `--length` and `-z` also frame output, `--whole` is input-only (see Input framing). |
 | `--verdicts` | Flag | off | Print `accept`/`reject` per record instead of stopping at the first mismatch. |
 | `--timeout` | Duration | `10s` | Per-run limit for `--against` (per batch with `--batch`); exceeding it is a failure, not a rejection. |
 | `--max-steps` | Integer | `1000000` | Matcher steps allowed per record; exceeding it is exit 4, never a verdict. |

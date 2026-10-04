@@ -327,6 +327,36 @@ $ grep -c "verify: check:verify@$(git rev-parse HEAD)/" .git/run
 1
 ```
 
+**The workspace a run works in.** A run MAY bind a workspace by
+attaching `workspace: <path>`. From then on every check of that run, its
+currency queries, and its dirty-tree test use that workspace's revision,
+wherever the executor is invoked from; without a binding they use the
+workspace the executor is invoked in. Routing commands to an active
+child run (Subprocess runs) selects a record, never a workspace — the
+binding is how a run says which code it is about. [R-run-workspace]
+
+```transcript @R-run-workspace
+$ jj git init -q main 2>/dev/null && cd main
+$ printf 'initial A\nA -> B\nterminal B\ncheck verify\n' > m.fsm
+$ jj config set --repo fsm.check.verify 'test -f marker' && jj describe -q -m machine && jj new -q
+$ jj workspace add -q ../pr 2>/dev/null && touch ../pr/marker
+$ rfc-fsm-exec m.fsm --state ../run > /dev/null
+$ rfc-fsm-exec m.fsm --state ../run --record verify > /dev/null 2>&1; echo $?
+1
+$ rfc-fsm-exec m.fsm --state ../run --attach "workspace: $(cd ../pr && pwd)" > /dev/null
+$ rfc-fsm-exec m.fsm --state ../run --record verify | grep -c "recorded verify"
+1
+$ grep -c "verify: check:verify@$(cd ../pr && jj log -r @ --no-graph -T commit_id)/" ../run
+1
+```
+
+**Commands that act.** A configured command MAY act as well as observe —
+push a branch, merge a change — and exit 0 only when the action
+succeeded; its receipt is then the record of the action. A process that
+needs an action recorded configures the action as the observation's
+command and invokes it through `--record`, so the executor stays the only
+writer of check and observation keys.
+
 **A dirty tree is outstanding work.** In a plain git repository, a
 working tree with uncommitted or untracked changes almost always holds
 the run's own work, left behind when the agent lost context. The
@@ -373,9 +403,15 @@ $ rfc-fsm-exec m.fsm --state .git/run --stash > /dev/null; echo $?
 $ stashed=$(sed -n 's/^  stash: //p' .git/run)
 $ test -e stray; echo $?
 1
-$ git stash push -q --include-untracked -m other 2>/dev/null; git stash clear
+$ touch other && git stash push -q --include-untracked -m other
+$ test "$(git rev-parse stash@{0})" != "$stashed"; echo $?
+0
+$ git stash clear
 $ git cat-file -e "$stashed^{commit}"; echo $?
 0
+$ git ls-tree -r --name-only "$stashed^3" | grep -c stray
+1
+
 $ git for-each-ref refs/fsm/stash --format='%(objectname)' | grep -c "$stashed"
 1
 ```
@@ -634,13 +670,19 @@ operation: the parent's new state line and its `child: <child-key>/r<n>
 @ <child machine pin>` attachment are written in one write — one append
 on the file store, one `ledger set` event carrying both fields on the
 ledger store. Allocation MUST hold an exclusive lock on
-`<log dir>/runs/<child-key>.lock` from choosing the number until the
-binding is written, on both stores, so two executors in one repository
-never bind the same number and no binding is ever provisional. The child's first state is written after the binding. An
-executor that stops after the binding finds, on its next invocation, a
-binding whose run has no record, and creates it; an executor that stops
-before the binding has changed nothing. Every crash point is therefore
-either nothing done or a binding to complete.
+`<log dir>/runs/<child-key>.lock` while it chooses the number — one more
+than the highest run of that key that exists — and creates the child's
+record holding only its machine pin, before the binding is written; on
+the ledger store the child's record is its key's first event. The record
+is the reservation: an executor that stops after creating it and before
+binding leaves an unbound run that the next allocator sees and skips,
+and the audit ignores. Two executors in one repository therefore never
+bind the same number, wherever their parent records live.
+ The child's first state is written after the binding. Every crash point
+is therefore one of: nothing done; an unbound reservation, skipped; or a
+bound run with no state yet, which the next invocation starts at the
+child's initial state.
+
 
 **Addressing.** The agent addresses only the parent record; the executor
 routes to the **active run**, the innermost run whose parent is in a
@@ -714,7 +756,8 @@ $ rfc-fsm-exec parent.fsm --state .git/run --audit >/dev/null 2>&1; echo $?
 1
 ```
 
-Recovery from a crash between the binding and the child's first state:
+Recovery when an executor stopped after reserving a run but before
+binding it — the next entry skips the reservation:
 
 ```transcript @R-subprocess-runs
 $ git init -q . && git commit -q --allow-empty -m seed
@@ -727,10 +770,11 @@ $ cat > draft-a-child-00.md <<'EOF'
 > ```
 > EOF
 $ printf 'initial START\nSTART -> JOB\nJOB -> END\nterminal END\nsubprocess JOB: draft-a-child-00 @R-child\nreturn JOB DONE -> END\n' > parent.fsm
-$ printf 'START\n  job: 2\nJOB\n  child: job-2/r1 @ draft-a-child-00\n' > .git/run
-$ rfc-fsm-exec parent.fsm --state .git/run | grep -c "state: WORK"
+$ mkdir -p .git/fsm-logs/runs/job-2 && printf '# machine: draft-a-child-00\n' > .git/fsm-logs/runs/job-2/r1
+$ rfc-fsm-exec parent.fsm --state .git/run --attach "job: 2" > /dev/null
+$ rfc-fsm-exec parent.fsm --state .git/run JOB | grep -c "child run job-2/r2 started"
 1
-$ test -f .git/fsm-logs/runs/job-2/r1; echo $?
+$ rfc-fsm-exec parent.fsm --state .git/run --audit > /dev/null; echo $?
 0
 ```
 
@@ -845,6 +889,8 @@ committed file or to the run record.
 | `--current <key>...` | Exit 0 when every named key's latest claim is current. |
 | `--commit-wip` / `--stash` | Resolve a dirty plain-git tree (see "A dirty tree is outstanding work"). |
 | `--child` / `--parent` | Direct a query, advance, attachment, or record at the active child run or its parent. |
+| `--attach "workspace: <path>"` | Bind the run's checks to a workspace (see "The workspace a run works in"). |
+
 | `--audit [--recheck]` | Verify the record; with `--recheck`, re-run every check. |
 
 ### Errors
