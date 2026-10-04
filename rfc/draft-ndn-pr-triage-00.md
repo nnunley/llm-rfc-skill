@@ -181,6 +181,7 @@ observe pushed
 observe posted
 observe merge-held
 observe merged
+observe human-merged
 observe cleaned
 observe issues-settled
 observe wait-ended
@@ -220,25 +221,25 @@ guard AWAIT_APPROVAL -> PARKED: wait-ended
 guard MERGE -> MERGED: merged
 guard MERGE -> AWAIT_HUMAN: merge-held
 guard MERGE -> PARKED: blocked
-guard AWAIT_HUMAN -> MERGED: merged
+guard AWAIT_HUMAN -> MERGED: human-merged
 guard AWAIT_HUMAN -> DONE: declined
 guard AWAIT_HUMAN -> PARKED: wait-ended
 guard MERGED -> DONE: cleaned issues-settled
 guard MERGED -> PARKED: blocked
-note CLASSIFY: record snapshot — it takes the PR's lease, or finds another instance holding it — then the one class it decides (parked, already-merged, closed, dirty, red, review, mergeable); for dirty or red also attach workspace: <path> to bind the run's checks to the PR's workspace, and record isolated — that workspace exists, is at the PR head, and is not the main checkout; the snapshot decides the branch, you do not
+note CLASSIFY: record snapshot — it takes the PR's lease, or finds another instance holding it — then the one class it decides (parked, already-merged, closed, dirty, red, review, mergeable); for dirty or red also attach workspace: <path> to bind the run's checks to the PR's workspace, and record isolated — the bound workspace exists, is the PR's, is at the PR head, and is not the main checkout; the snapshot decides the branch, you do not
 note PROBE: record generated-only when every conflict on trunk is in a generated file, and REGEN resolves it; otherwise attach hand-merge describing the conflict and resolve it in FIX
 note REGEN: run the repository's regeneration in the PR's workspace and commit the result, attaching change: <commit>; then record regenerated (the freshness check at that commit), artifacts-clean, and tests-untouched — regeneration that edits a test file goes to FIX instead; if regeneration cannot resolve the conflict, attach hand-merge and go to FIX
 note FIX: the work is yours: change the code in the PR's workspace and attach change: <commit>; record artifacts-clean (no binaries, no untracked or scratch files in the diff) and tests-untouched (the diff against the PR's base edits no test file) to go to VERIFY; a diff that edits a test file records tests-touched instead and goes through TEST_CHANGE; if the failure is not the PR's, record base-fails and answer on the PR; if a dirty tree greets you, it is your own work from before a context loss — read it, then commit or stash it; if you cannot proceed, attach blocked with the reason and park
 note TEST_CHANGE: a test file is edited; attach test-reason citing where the behavior change was intended, in writing, by someone other than you (an issue, a review, the PR description), and record artifacts-clean
 note VERIFY: record verify — the configured test command at this commit; a failure goes back to FIX, and a hook that fails under load is a failed verify, not a flaky one; an edit made here withdraws the checks recorded in FIX, so make edits in FIX
 note PUSH: record pushed — its command is pr-push, which pushes exactly the commit your current checks describe; if it refuses because your checks no longer describe the workspace, return to FIX and record them again; the next CLASSIFY usually finds CI pending and parks until a later poll
-note RESPOND: read every comment and thread critically before acting (critical-reading); if the review asks for changes, attach requested summarizing them, record isolated, and go to FIX; otherwise draft the reply as the operator speaking (posting-as-the-user), attach draft: <path> sha256 <hash>, and never post from this state
+note RESPOND: read every comment and thread critically before acting (critical-reading); if the review asks for changes, attach requested summarizing them, attach workspace: <path> naming the PR's workspace, record isolated, and go to FIX; otherwise draft the reply as the operator speaking (posting-as-the-user), attach draft: <path> sha256 <hash>, and never post from this state
 note AWAIT_APPROVAL: wait with pr-wait posted; the post happens only through pr-post after the operator approves, and posted records once it is on the forge, ending the run; a requested revision goes back to RESPOND; wait-ended records when the wait runs out or the lease is lost, and the run parks
 note MERGE: record merged — its command is pr-merge, which authorizes from fresh forge state immediately before merging and merges with the head pinned; if merging is not allowed (policy never, or authorization fails) it refuses, and you record merge-held and go to AWAIT_HUMAN
-note AWAIT_HUMAN: wait with pr-wait merged for the operator's decision; merged records once they merge; attach declined: <head> <reason> if they decline, which ends the run and holds until the PR's head changes; wait-ended records when the wait runs out or the lease is lost, and the run parks
+note AWAIT_HUMAN: wait with pr-wait human-merged for the operator's decision; human-merged records once they have merged on the forge; attach declined: <head> <reason> if they decline, which ends the run and holds until the PR's head changes; wait-ended records when the wait runs out or the lease is lost, and the run parks
 note MERGED: record cleaned (pr-ws done removed the PR's workspace) and issues-settled (every issue the PR claims to fix is closed, or, for a PR merged into a stacked parent, a follow-up is recorded on the parent)
-note DONE: the run is complete — merged, answered, or declined; pr-done rolls up its record into one summary line
-note PARKED: nothing to do in this run — CI pending, nothing to act on, another instance holds the lease, the wait ended, or you were blocked; a later session starts a new run
+note DONE: the run is complete — merged, answered, or declined; run pr-done to roll its record up into one summary line
+note PARKED: nothing to do in this run — CI pending, nothing to act on, another instance holds the lease, the wait ended, or you were blocked; run pr-done to roll it up; a later session starts a new run
 note CANCELLED: the PR was closed without merging; nothing further
 ```
 
@@ -266,10 +267,13 @@ against one consistent state, and a return to `CLASSIFY` after a push
 judges the new head. [R-pr-classify]
 
 The earlier runs' facts are plain fields on the PR's key in the
-`pr-triage` ledger — `posted=<comment ID>`, `handled=<the newest activity ID the action addressed>`,
-`declined=<head>` — written by the wrappers that produce them (Acting
-through wrappers), so they travel with ledger events to another clone
-and do not depend on local receipts. On the file store they are read
+`pr-triage` ledger — `posted=<comment ID>` and `handled=<the newest
+activity ID the action addressed>`, written by the wrappers that produce
+them (Acting through wrappers) — and the `declined` attachments of the
+PR's earlier runs, which are part of those runs' records and so exist
+the moment the decline is attached, before the run ends or its lease is
+released. All of them travel with ledger events to another clone and do
+not depend on local receipts. On the file store they are read
 from the run records under the log directory, within one clone. A run **handles** activity when
 it posts a reply to it (`posted`) or pushes a fix it entered through
 `requested`; a run that sees activity and parks does not handle it, so
@@ -374,9 +378,10 @@ $ grep -c 'lease held by claude-pr-triage/b' err
 A long command keeps its lease while a competitor keeps trying:
 
 ```transcript @R-pr-owner
-$ pr-fixture . --pr 7 --at VERIFY > /dev/null
+$ pr-fixture . --pr 7 --at VERIFY --verify-command 'sleep 7' > /dev/null
 $ export PR_TRIAGE_LEASE=2s
-$ jj config set --repo fsm.check.verify 'pr-lease run -- sleep 7'
+$ jj config get fsm.check.verify | grep -c '^pr-lease run -- '
+1
 $ (for i in 1 2 3 4 5 6; do sleep 1; PR_TRIAGE_INSTANCE=codex/z pr-lease take --pr 7 && echo stolen; done) > attempts &
 $ rfc-fsm-exec .pr-triage/session.fsm --state .git/session --record verify | grep -c "recorded verify"
 1
@@ -385,26 +390,32 @@ $ wait; grep -c stolen attempts
 ? 1
 ```
 
-Losing the lease stops the command, records nothing, and lets the run
-record its recovery:
+Losing the lease stops a running command and records nothing; a wait
+that loses its lease records why and parks:
 
 ```transcript @R-pr-owner
+$ pr-fixture . --pr 7 --at VERIFY --verify-command 'sleep 30; touch ran-to-end' > /dev/null
+$ S="rfc-fsm-exec .pr-triage/session.fsm --state .git/session"
+$ (sleep 1; pr-lease steal --pr 7 --as codex/z) &
+$ $S --record verify > /dev/null 2>&1; echo $?
+1
+$ wait; test -e ws/pr-7/ran-to-end; echo $?
+1
+$ grep -c 'verify: check:' .git/fsm-logs/runs/pr-7/r1
+0
+? 1
 $ pr-fixture . --pr 7 --at AWAIT_APPROVAL > /dev/null
-$ export PR_TRIAGE_LEASE=1s
-$ jj config set --repo pr-triage.poll-interval 0s
-$ (sleep 2; PR_TRIAGE_INSTANCE=codex/z pr-lease take --pr 7) &
+$ jj config set --repo pr-triage.poll-limit 1000 && jj config set --repo pr-triage.poll-interval 1s
+$ (sleep 2; pr-lease steal --pr 7 --as codex/z) &
 $ pr-wait posted --pr 7; echo $?
 1
-$ wait; grep -c 'wait-ended: observe:wait-ended@' .git/fsm-logs/runs/pr-7/r1
+$ wait; receipt=$(sed -n 's|^  wait-ended: observe:wait-ended@[0-9TZ]*/exit=0/receipt=||p' .git/fsm-logs/runs/pr-7/r1)
+$ grep -c 'lease lost to codex/z' ".git/fsm-logs/$receipt"
 1
-$ pr-done --pr 7 2> err; echo $?
-2
-$ grep -c 'not at a terminal' err
+$ $S PARKED > /dev/null && pr-done --pr 7 > /dev/null; echo $?
+0
+$ ledger tail -n 1 --ledger pr-triage | grep -c "pr-7/r1: PARKED — wait ended"
 1
-$ rfc-fsm-exec .pr-triage/session.fsm --state .git/session PARKED > /dev/null; echo $?
-0
-$ pr-done --pr 7 > /dev/null; echo $?
-0
 ```
 
 ### Acting through wrappers
@@ -421,15 +432,17 @@ of checking now. A refusal exits nonzero and records nothing.
 
 | Wrapper | Lease | Checks before acting | Records |
 |---|---|---|---|
+| every check key (`verify`, `regenerated`, `artifacts-clean`, `tests-untouched`, `tests-touched`) and the observations `isolated`, `generated-only`, `base-fails`, `issues-settled` | held | That this instance holds the PR's lease, renewed while the command runs — a verification that outlives its lease records nothing. | The claim or receipt. |
 | `pr-push` (`pushed`) | held | `rfc-fsm-exec --current` for the check keys `verify`, `artifacts-clean`, and `tests-untouched` or `tests-touched`, all at the same commit, and — when `tests-touched` — a `test-reason` attached in this run; and that the run's bound workspace is at that commit. Pushes exactly that commit through `pr-triage.push-wrap`. | Receipt: the pushed commit and the forge head after; for a fix entered through `requested`, the ledger field `handled`. |
 | `pr-merge` (`merged`) | held | Authorization from fresh forge state (Merge policy), every attempt, including a resumed one — never an earlier observation. | Receipt: the merge and its authorization. |
+| `pr-merged` (`human-merged`) | held | Observes the forge only and acts on nothing: exits 0 when the PR is merged there. | Receipt: the merge commit. |
 | `pr-merge --held` (`merge-held`) | held | The same authorization; exits 0 only when merging is not allowed, and merges nothing. | Receipt: why merging is not allowed. |
 | `pr-post` (`posted`) | held | That the draft's hash matches the `draft` attachment and the operator approved it; posts through `comment-post --approved`. | `posted` and the ledger fields `posted=<comment ID>`, `handled=<activity ID>`. |
 | `pr-wait <obs>` | held at start | Runs `rfc-fsm-exec --record <obs>` every `pr-triage.poll-interval`, renewing the lease between attempts. | The observation when it appears; after `pr-triage.poll-limit` attempts or on a lost lease, it runs `rfc-fsm-exec --record wait-ended`. |
 | `pr-wait-ended` (`wait-ended`) | none | Exits 0 when this run's poll limit is spent or its lease is lost — a recovery record, so it needs no lease. | Receipt: which. |
 | `pr-ws done` (`cleaned`) | held | That this instance holds the PR's lease. | Receipt: the removed workspace. |
 | sweep (`swept`) | takes a cleanup lease | For each workspace: the PR is merged or closed on the forge; then it takes the PR's lease as a short cleanup lease — failing if another instance holds one — removes the workspace, and releases it. A snapshot that tries to take the lease meanwhile finds it held and parks. | Receipt: the removed workspaces. |
-| `pr-done` | none | That the run's path ends at a terminal; the lease ended with it. Runs after the run ends, outside the machine. | The rollup of the run (Closing a run), and the ledger field `declined=<head>` when the run ended through a decline. |
+| `pr-done` | none | That the run's path ends at a terminal; the lease ended with it. Runs after the run ends, outside the machine. | The rollup of the run (Closing a run). |
 
 ```transcript @R-pr-wrappers
 $ pr-fixture . --pr 7 --at PUSH > /dev/null
@@ -457,6 +470,22 @@ The run is bound to `ws/pr-7`, so its checks describe that workspace
 although every command above is invoked from the main checkout, whose
 tree differs.
 
+A run reaching FIX through review binds its workspace there; `isolated`
+refuses an unbound run:
+
+```transcript @R-pr-wrappers
+$ pr-fixture . --pr 7 --at RESPOND --unbound > /dev/null
+$ S="rfc-fsm-exec .pr-triage/session.fsm --state .git/session"
+$ $S --attach "requested: rename the flag" > /dev/null
+$ $S --record isolated > /dev/null 2>&1; echo $?
+1
+$ $S --attach "workspace: $PWD/ws/pr-7" > /dev/null
+$ $S --record isolated > /dev/null; echo $?
+0
+$ $S FIX | grep -c "LEGAL"
+1
+```
+
 A fix for requested changes is handled within its own run, so the
 classification after its push does not answer the review again:
 
@@ -480,14 +509,17 @@ make the unchecked path impossible.
 |---|---|---|---|
 | `pr-triage.merge` | `never` \| `when-approved` | `never` | Whether the machine merges on its own. |
 
-Under `never`, `pr-merge` MUST NOT merge; it records `merge-held`, so
-`MERGE` proceeds only through `AWAIT_HUMAN`. Under `when-approved` it
+Under `never`, `pr-merge` MUST NOT merge: it refuses, recording nothing,
+and `pr-merge --held` exits 0, so the run records `merge-held` and
+proceeds only through `AWAIT_HUMAN`, where the operator's own merge is
+recorded as `human-merged` by `pr-merged`, which observes the forge and
+acts on nothing. Under `when-approved` it
 MUST fetch the PR's review and check state from the forge afresh — not
 from the snapshot — on every attempt, and merge only when: the head is
 the snapshot's head; every gating check is green at that head; no
 reviewer's latest review requests changes; at least one approval is at
 that head; and no comment or review is newer than that approval.
-Otherwise it records `merge-held`. The merge MUST pin the head
+Otherwise it refuses and `pr-merge --held` succeeds. The merge MUST pin the head
 (`gh pr merge --match-head-commit <sha>`), so a push between
 authorization and merge fails the merge. A comment or review posted at
 the same head between the fetch and the merge is not detected; the
@@ -500,13 +532,30 @@ unattended merge. [R-pr-merge-policy]
 $ pr-fixture . --pr 7 --at MERGE > /dev/null
 $ printf '{"number":7,"state":"OPEN","head":"%s","checks":"SUCCESS","reviews":[{"state":"APPROVED","commit":"%s","at":"2026-10-03T10:00:00Z"}],"comments":[]}\n' "$(cat head)" "$(cat head)" > ok.json
 $ printf '{"number":7,"state":"OPEN","head":"%s","checks":"SUCCESS","reviews":[{"state":"APPROVED","commit":"%s","at":"2026-10-03T10:00:00Z"}],"comments":[{"at":"2026-10-03T11:00:00Z","body":"hold on"}]}\n' "$(cat head)" "$(cat head)" > objection.json
+$ S="rfc-fsm-exec .pr-triage/session.fsm --state .git/session"
 $ jj config set --repo pr-triage.merge never
-$ PR_FORGE_FIXTURE=ok.json pr-merge --pr 7 | grep -c "merge-held"
+$ PR_FORGE_FIXTURE=ok.json $S --record merged > /dev/null 2>&1; echo $?
 1
+$ PR_FORGE_FIXTURE=ok.json $S --record merge-held > /dev/null; echo $?
+0
 $ jj config set --repo pr-triage.merge when-approved
-$ PR_FORGE_FIXTURE=objection.json pr-merge --pr 7 | grep -c "merge-held"
+$ PR_FORGE_FIXTURE=objection.json $S --record merged > /dev/null 2>&1; echo $?
 1
-$ PR_FORGE_FIXTURE=ok.json pr-merge --pr 7 | grep -c "merged"
+$ PR_FORGE_FIXTURE=ok.json $S --record merged > /dev/null; echo $?
+0
+```
+
+A human merge under policy `never` is observed, not performed:
+
+```transcript @R-pr-merge-policy
+$ pr-fixture . --pr 7 --at AWAIT_HUMAN > /dev/null
+$ S="rfc-fsm-exec .pr-triage/session.fsm --state .git/session"
+$ printf '{"number":7,"state":"MERGED","head":"%s","mergeCommit":"m1"}\n' "$(cat head)" > merged.json
+$ PR_FORGE_FIXTURE=forge-state.json $S --record human-merged > /dev/null 2>&1; echo $?
+1
+$ PR_FORGE_FIXTURE=merged.json $S --record human-merged > /dev/null; echo $?
+0
+$ $S MERGED | grep -c "LEGAL"
 1
 ```
 
@@ -537,17 +586,20 @@ $ rfc-fsm-exec .pr-triage/session.fsm --state .git/session PARKED | grep -c "LEG
 
 ### Closing a run
 
-On reaching `DONE`, `pr-done` MUST roll the run's ledger thread up into
-one summary line naming the PR, the run, and what it did — merged and
-the issues it settled, answered, or declined — so the ledger shows one
-line per finished run. [R-pr-rollup]
+When a run reaches any terminal — `DONE`, `PARKED`, or `CANCELLED` —
+`pr-done` MUST roll its ledger thread up into one summary line,
+`pr-<N>/r<k>: <terminal> — <what it did>`: merged and the issues it
+settled, answered, or declined for `DONE`; the reason for `PARKED`
+(pending CI, lease held, wait ended, blocked: <reason>); closed unmerged
+for `CANCELLED`. The ledger shows one line per finished run.
+[R-pr-rollup]
 
 ```transcript @R-pr-rollup
 $ pr-fixture . --pr 7 --at MERGED --with cleaned,issues-settled > /dev/null
 $ rfc-fsm-exec .pr-triage/session.fsm --state .git/session DONE > /dev/null
 $ pr-done --pr 7 > /dev/null; echo $?
 0
-$ ledger tail -n 1 --ledger pr-triage | grep -c "pr-7/r1: merged"
+$ ledger tail -n 1 --ledger pr-triage | grep -c "pr-7/r1: DONE — merged"
 1
 ```
 
@@ -556,7 +608,11 @@ $ ledger tail -n 1 --ledger pr-triage | grep -c "pr-7/r1: merged"
 The machines are derived artifacts. `bin/pr-init` MUST tangle both fsm
 blocks from this document with `rfc-tangle`, compile the session machine
 with `rfc-fsm-compile` and validate the result with `rfc-run --type fsm`,
-list every check and observation key whose command is not configured,
+configure `fsm.base.<key>` for each history check as `pr-base`, which
+prints the commit the PR's diff is taken against (the merge base of the
+run's workspace with the PR's base branch), wrap every command whose
+Lease is "held" (Acting through wrappers) in `pr-lease run --`, list
+every check, observation, and base key whose command is not configured,
 and, on the ledger store, create the repository's `pr-triage` ledger — or accept an existing one, such as one imported from another clone, that already has these fields — with
 the fields the record store needs (`state`, the union of both machines'
 states; `attach`; `pin`) and the fields `owner`, `posted`, `handled`,
@@ -577,7 +633,7 @@ $ ledger show --ledger pr-triage | grep -cE 'state|attach|pin|owner|posted|handl
 ```
 
 The skill MUST ship `bin/pr-fixture <dir> [--pr N] [--at STATE] [--with
-key,...] [--via requested] [--fresh]`, which builds a self-contained test repository in
+key,...] [--via requested] [--unbound] [--verify-command <cmd>] [--fresh]`, which builds a self-contained test repository in
 `<dir>`: a jj repository with a bare git repository `forge.git` standing
 in for the forge, a recorded forge state for the PR in `forge-state.json` and a green, approved one in `forge-green.json` (served through
 `PR_FORGE_FIXTURE`), the ledger initialized by `pr-init`, a PR workspace
@@ -587,8 +643,21 @@ session and its PR run to that state through the executor, recording the
 evidence each guard on the way needs, so the record is one an agent
 could have produced; `--with` records further keys at that state, and
 `--fresh` re-records the state's checks at the workspace's current
-commit, and `--via requested` reaches the state through `RESPOND -> FIX` with `requested` attached. Every transcript in this document that needs a repository starts
+commit, and `--via requested` reaches the state through `RESPOND -> FIX` with `requested` attached. `--unbound` leaves the run without a `workspace` binding, and `--verify-command` sets the command `pr-init` wraps for `verify`. The fixture also provides `pr-lease steal --pr N --as <instance>`, which takes the lease out from under its holder, for testing loss deterministically. Every transcript in this document that needs a repository starts
 from it. [R-pr-fixture]
+
+A decline holds from the moment it is attached, before `pr-done` runs:
+
+```transcript @R-pr-classify
+$ pr-fixture . --pr 7 --at AWAIT_HUMAN > /dev/null
+$ S="rfc-fsm-exec .pr-triage/session.fsm --state .git/session"
+$ $S --attach "declined: $(cat head) not this release" > /dev/null && $S DONE > /dev/null
+$ PR_TRIAGE_INSTANCE=codex/z PR_FORGE_FIXTURE=forge-green.json pr-snapshot --pr 7 --print > snap.json
+$ pr-class --snapshot snap.json mergeable; echo $?
+1
+$ pr-class --snapshot snap.json parked; echo $?
+0
+```
 
 Classification facts reach another clone through the ledger alone:
 
@@ -630,7 +699,8 @@ $ rfc-fsm-exec .pr-triage/session.fsm --state .git/session | grep -c "state: FIX
 | `pr-triage.poll-limit` | Integer | `30` | Polls before a wait records `wait-ended` and parks the run. |
 | `pr-triage.lease` | Duration | `30m` | How long an ownership lease lives without renewal. |
 | `pr-triage.store` | `file` \| `ledger` | `ledger` when the `ledger` tool is installed, else `file` | The record store. |
-| `fsm.check.<key>` | Command | none | The command for each check and observation key, per draft-ndn-fsm-session-01. |
+| `fsm.check.<key>` | Command | none | The command for each check and observation key, per draft-ndn-fsm-session-01; `pr-init` wraps the lease-holding ones in `pr-lease run --`. |
+| `fsm.base.<key>` | Command | `pr-base` | The base commit for each history check (`artifacts-clean`, `tests-untouched`, `tests-touched`); set by `pr-init`. |
 
 All keys are jj repository config, never committed. The `store` default
 prefers the ledger because its records survive the workspace and travel

@@ -463,6 +463,13 @@ $ rfc-abnf d.md bin --timeout 1s --against 'sleep 5' >/dev/null 2>&1; echo $?
 | `--max-attempts` | Integer | `50 × N` | Candidate strings generation or mutation tries before reporting exhaustion. |
 | `--generate` / `--near-miss` with `--against` | Integer | `100` each | Samples per side of a differential check. |
 | `--length` / `-z` / `--whole` | Framing | LF records | Input framing; `--length` and `-z` also frame output, `--whole` is input-only (see Input framing). |
+| `--witness` | Flag | off | Run every witness table in the document (Level 1). |
+| `--reject` | Flag | off | Exit 0 only when every record fails to match. |
+| `--generate N` / `--near-miss N` | Integer | none | Print up to N valid strings / near-misses (Level 3). |
+| `--require-near-miss` | Flag | off | Exit 1 when no near-miss was found. |
+| `--against <cmd>` | Command | none | Run a differential check against a parser (Level 3). |
+| `--batch` | Flag | off | Start the `--against` command once, with length-framed samples. |
+| `--allow-no-near-miss` | Flag | off | Let `--against` pass with no near-miss, for an all-accepting rule. |
 | `--verdicts` | Flag | off | Print `accept`/`reject` per record instead of stopping at the first mismatch. |
 | `--timeout` | Duration | `10s` | Per-run limit for `--against` (per batch with `--batch`); exceeding it is a failure, not a rejection. |
 | `--max-steps` | Integer | `1000000` | Matcher steps allowed per record; exceeding it is exit 4, never a verdict. |
