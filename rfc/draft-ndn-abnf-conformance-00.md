@@ -127,14 +127,23 @@ $ printf 'a\n' | rfc-abnf d.md giver; echo $?
 0
 $ printf '(())\n' | rfc-abnf d.md empty; echo $?
 0
-$ printf '' | rfc-abnf -z d.md empty; echo $?
+$ printf '' | rfc-abnf --whole d.md empty; echo $?
 0
+$ printf '' | rfc-abnf d.md giver; echo $?
+! rfc-abnf: no input
+2
 ```
 
-**Input framing.** By default each input is one line, with only the
-terminating line feed removed. `-z` MUST read NUL-separated inputs, so an
-input can contain CR, LF, or any octet but NUL; `--whole` MUST treat all
-of standard input as one input. Rules resolve across all `abnf` blocks of
+**Input framing.** Inputs are records. By default a record ends at each
+LF, which is removed; a final record without a trailing LF is still a
+record, and a trailing LF does not begin an empty one. `-z` MUST end
+records at NUL instead, so a record can contain CR, LF, or any octet but
+NUL. `--whole` MUST read all of standard input as exactly one record,
+possibly empty — the only way to test the empty input. Zero records MUST
+be an error (exit 2, "no input"), so evidence cannot pass by testing
+nothing. `--reject` MUST invert the verdict: exit 0 only when every
+record fails to match, so a set of near-misses is checked in full and
+not only up to its first. Rules resolve across all `abnf` blocks of
 the document, so a grammar split around prose is one grammar.
 
 **Unsupported grammars.** The matcher decides what it can decide and
@@ -156,6 +165,25 @@ $ printf '```abnf\nr = r\n```\n' > loop.md
 $ rfc-abnf loop.md r < in
 ! rfc-abnf: unsupported grammar: r derives no finite string
 ? 2
+```
+
+**Matching budget.** Matching MUST terminate for every supported grammar
+and input: a repetition iteration that consumes nothing ends the
+repetition, so a nullable element under `*` cannot loop, and
+`--max-steps` bounds the work spent on one record, so an ambiguous
+grammar over a long input cannot run without bound. Exhausting the
+budget is its own outcome — exit 4, naming the record — never a match
+and never a rejection. [R-abnf-budget]
+
+```transcript @R-abnf-budget
+$ printf '```abnf\nr = *( *"a" ) "b"\n```\n' > nullable.md
+$ printf 'aaab\n' > in
+$ rfc-abnf nullable.md r < in; echo $?
+0
+$ printf '```abnf\nr = *( "a" / "aa" ) "b"\n```\n' > ambiguous.md
+$ printf 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaac\n' > long
+$ rfc-abnf --max-steps 10 ambiguous.md r < long; echo $?
+4
 ```
 
 ### Level 1 — witness tables
@@ -234,11 +262,13 @@ against it.
 distinct strings that match `<rule>`, walking the vendored package's
 parsed grammar (concatenation, alternation, repetition, options,
 literals with their case rules, rule references) and checking each
-string with the matcher before printing it. For every bounded
-repetition it MUST include its minimum and maximum counts among the
-samples, and for an unbounded one its minimum and minimum plus
-`--max-repeat`, so lengths at the edges of the grammar are exercised and
-not only lengths near the middle. When the rule's language has fewer than
+string with the matcher before printing it. Within N and
+`--max-length`, it MUST include each repetition's boundary counts among
+the samples — minimum and maximum for a bounded repetition, minimum and
+minimum plus `--max-repeat` for an unbounded one — so lengths at the
+edges are exercised, not only lengths near the middle; a boundary it
+could not include is reported on standard error as
+`uncovered: <rule> <count>`. When the rule's language has fewer than
 N strings within the bounds, or `--max-attempts` runs out, it prints what
 it found and reports `exhausted: <found> of <N>` on standard error with
 exit 0. [R-abnf-generate]
@@ -248,8 +278,10 @@ rejects, each derived from a generated valid string by one mutation:
 deleting, duplicating, or replacing one character (a replacement takes a
 value just outside a numeric range or terminal set the grammar uses);
 dropping one element of a concatenation; or swapping two adjacent
-elements of a concatenation. Each is checked by the matcher and printed
-only if rejected. It MUST report `near-misses: <found> from <tried>
+elements of a concatenation. A mutation that does not apply — dropping
+from a one-element concatenation, swapping identical adjacent elements —
+is skipped and not counted as a candidate. Each candidate is checked by
+the matcher and printed only if rejected. It MUST report `near-misses: <found> from <tried>
 candidates` on standard error, and with `--require-near-miss` exit 1 when
 it found none, which evidence for a fixture whose grammar has near-misses
 MUST use. [R-abnf-near-miss]
@@ -258,14 +290,18 @@ MUST use. [R-abnf-near-miss]
 $ cat > d.md <<'EOF'
 > ```abnf
 > id  = 1*DIGIT "-" 1*ALPHA
-> two = "a" / "b"
+> two = %s"a" / %s"b"
 > ```
 > EOF
 $ rfc-abnf -z d.md id --generate 20 > valid
 $ rfc-abnf -z d.md id < valid; echo $?
 0
-$ rfc-abnf d.md two --generate 5 2>&1 >/dev/null
+$ rfc-abnf d.md two --generate 5 > out 2> err; echo $?
+0
+$ cat err
 exhausted: 2 of 5
+$ grep -c . out
+2
 $ rfc-abnf d.md id --generate 5 --seed 3 > a; rfc-abnf d.md id --generate 5 --seed 3 > b
 $ cmp -s a b; echo $?
 0
@@ -279,8 +315,8 @@ $ cat > d.md <<'EOF'
 > EOF
 $ rfc-abnf -z d.md claim --near-miss 30 --require-near-miss > misses 2>report; echo $?
 0
-$ rfc-abnf -z d.md claim < misses >/dev/null 2>&1; echo $?
-1
+$ rfc-abnf -z --reject d.md claim < misses; echo $?
+0
 $ grep -cE '^near-misses: [1-9][0-9]* from [0-9]+ candidates$' report
 1
 ```
@@ -296,13 +332,19 @@ MUST run the command on every generated valid string and every
 near-miss, passing the string's exact bytes on standard input, and
 classify each run as **accept** (exit 0), **reject** (exit 1), or
 **failure** (any other exit, a signal, or exceeding `--timeout`). It exits
-0 only when every valid string is accepted and every near-miss rejected;
+0 only when it ran at least one valid string and at least one near-miss
+(no near-miss is allowed only with `--allow-no-near-miss`, for a rule
+that accepts every string over its alphabet), every valid string was
+accepted, and every near-miss rejected;
 1 on a disagreement, printing the input and which side accepted it; and
 3 on any failure, printing the input and how the command failed — a
-crash is never counted as a rejection. With `--batch`, the command reads
-all samples NUL-separated on standard input and writes one `accept` or
-`reject` line per sample, in order, for parsers that would be slow to
-start once per sample. [R-abnf-differential]
+crash is never counted as a rejection. With `--batch`, the command is
+started once and reads every sample on standard input as
+`<decimal length>:<bytes>`, so a sample can hold any octet, and writes
+one line per sample, in order, that is exactly `accept` or `reject`. Any
+other reply — a missing or extra line, a malformed line, a nonzero exit
+of the batch command, or the whole batch exceeding `--timeout` — is a
+failure (exit 3). [R-abnf-differential]
 
 ```transcript @R-abnf-differential
 $ cat > d.md <<'EOF'
@@ -312,8 +354,10 @@ $ cat > d.md <<'EOF'
 > EOF
 $ rfc-abnf d.md id --against 'grep -qE "^[0-9]+-[A-Za-z]+$"'; echo $?
 0
-$ rfc-abnf d.md id --against 'grep -qE "^[0-9]*-[A-Za-z]+$"' 2>&1 | head -1
-parser accepts a near-miss the grammar rejects: "-a"
+$ rfc-abnf d.md id --against 'grep -qE "^[0-9]*-[A-Za-z]+$"' > /dev/null 2> err; echo $?
+1
+$ grep -c 'parser accepts a near-miss the grammar rejects' err
+1
 $ rfc-abnf d.md id --against 'exit 7' >/dev/null 2>&1; echo $?
 3
 ```
@@ -328,13 +372,17 @@ $ rfc-abnf d.md id --against 'exit 7' >/dev/null 2>&1; echo $?
 | `--max-length` | Integer | `256` | Longest string generation emits, in octets; bounds output size and large mandatory repetitions. |
 | `--max-attempts` | Integer | `50 × N` | Candidate strings generation or mutation tries before reporting exhaustion. |
 | `--generate` / `--near-miss` with `--against` | Integer | `100` each | Samples per side of a differential check. |
-| `--timeout` | Duration | `10s` | Per-run limit for `--against`; exceeding it is a failure, not a rejection. |
+| `--timeout` | Duration | `10s` | Per-run limit for `--against` (per batch with `--batch`); exceeding it is a failure, not a rejection. |
+| `--max-steps` | Integer | `1000000` | Matcher steps allowed per record; exceeding it is exit 4, never a verdict. |
 
 ### Errors
 
 | Condition | Exit | Recovery |
 |---|---|---|
-| Input does not match | 1 | The message names the input; fix the output or the grammar. |
+| Input does not match (or, under `--reject`, matches) | 1 | The message names the input; fix the output or the grammar. |
+| No input records | 2 | Supply input; use `--whole` to test the empty input. |
+| Differential ran no valid sample, or no near-miss | 1 | Raise N or `--max-attempts`; `--allow-no-near-miss` only for an all-accepting rule. |
+| Matching budget exhausted | 4 | The grammar is too ambiguous for the input at this budget; raise `--max-steps` or restate the rule. |
 | Witness row disagrees | 1 | Fix the grammar, or the row if the prose was misread. |
 | Differential disagreement | 1 | The message names the input and which side accepted it. |
 | No near-miss found under `--require-near-miss` | 1 | Raise `--max-attempts`, or the fixture's grammar has none. |
@@ -419,11 +467,12 @@ against each other.
 
 `rfc-abnf --against` executes a command written in the document, the same
 trust posture as a transcript, and runs under the sandbox provider of
-draft-ndn-sandbox-providers-00 when invoked from evidence. Every
-path is bounded: generation by `--max-depth`, `--max-repeat`,
-`--max-length`, and `--max-attempts`; matching by refusing left-recursive
-and unproductive rules before it starts; and `--against` by `--timeout`.
-No grammar or parser can make the tool run without bound. Inputs are never evaluated, only matched.
+draft-ndn-sandbox-providers-00 when invoked from evidence. Generation is
+bounded by `--max-depth`, `--max-repeat`, `--max-length`, and
+`--max-attempts`; matching by `--max-steps`, after refusing
+left-recursive and unproductive rules; and `--against` by `--timeout`.
+Exhausting any budget is reported as its own outcome, never as a match,
+a rejection, or a pass. Inputs are never evaluated, only matched.
 
 ## References
 

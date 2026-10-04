@@ -62,8 +62,9 @@ when, and only when, they appear in all capitals, as shown here.
   the executor, by running the key's configured command against a
   committed revision; repeatable at that revision.
 - **observation** — an evidence key declared `observe <key>`: recorded
-  only by the executor, by running the key's configured command once; a
-  fact about a moment, never repeated.
+  only by the executor, by running the key's configured command; a fact
+  about a moment, never re-run at audit. A later visit to its state
+  records a new observation.
 - **claim** — what the executor records for a check or observation: the
   key, the revision or time, and the hash of the command's output.
 - **child run** — the record of a subprocess state's machine, started
@@ -90,7 +91,8 @@ A
 ### Progressive disclosure
 
 A session query MUST disclose only the current state: its guidance note,
-its deadline if any, and its outgoing transitions. Notes attached to
+its deadline if any, and its outgoing transitions, each with the guard
+keys it still lacks. Notes attached to
 states not reachable in one move MUST NOT appear. [R-session-disclose]
 
 ```transcript @R-session-disclose
@@ -100,6 +102,12 @@ $ rfc-fsm-exec m.fsm --state sess | grep -c "do the interview"
 $ rfc-fsm-exec m.fsm --state sess | grep -c "publish only when green"
 0
 ? 1
+```
+
+```transcript @R-session-disclose
+$ printf 'initial A\nA -> B\nterminal B\nguard A -> B: swept\n' > m.fsm
+$ rfc-fsm-exec m.fsm --state sess | grep -c "missing: swept"
+1
 ```
 
 ### Guarded advance
@@ -281,16 +289,17 @@ $ cat > m.fsm <<'EOF'
 > check broken
 > guard FIX -> PUSH: verify
 > EOF
-$ rfc-fsm-exec m.fsm --state run >/dev/null
-$ rfc-fsm-exec m.fsm --state run --attach "verify: pass"
+$ git add m.fsm && git commit -q -m machine
+$ rfc-fsm-exec m.fsm --state .git/run >/dev/null
+$ rfc-fsm-exec m.fsm --state .git/run --attach "verify: pass"
 ! rfc-fsm-exec: verify is a check key; record it with --record verify
 ? 1
-$ rfc-fsm-exec m.fsm --state run --record broken
+$ rfc-fsm-exec m.fsm --state .git/run --record broken
 ! rfc-fsm-exec: check broken exited 1; nothing recorded
 ? 1
-$ rfc-fsm-exec m.fsm --state run --record verify | grep -c "recorded verify"
+$ rfc-fsm-exec m.fsm --state .git/run --record verify | grep -c "recorded verify"
 1
-$ rfc-fsm-exec m.fsm --state run PUSH | grep -c "LEGAL"
+$ rfc-fsm-exec m.fsm --state .git/run PUSH | grep -c "LEGAL"
 1
 ```
 
@@ -301,9 +310,13 @@ commit: the executor snapshots it (any `jj` command does) and uses the
 working-copy commit. In a plain git repository the executor MUST refuse
 `--record` of a check while the working tree has uncommitted or
 untracked changes (exit 2, "commit first"). The claim records the commit
-ID; the check runs in a temporary worktree at that commit, so it cannot
-see or change files outside it. Observations run in the repository root
-and name no revision. [R-check-revision]
+ID, and the check runs in a temporary worktree at that commit, so the
+revision under check is fixed. The worktree is not a sandbox: the
+command runs as the operator's user, with that user's access to the
+original checkout, its configuration, its records, and anything else the
+user can reach. Confinement, where wanted, comes from a sandbox provider
+(draft-ndn-sandbox-providers-00) wrapping the command. Observations run
+in the repository root and name no revision. [R-check-revision]
 
 ```transcript @R-check-revision
 $ git init -q . && git commit -q --allow-empty -m seed
@@ -317,6 +330,30 @@ $ rfc-fsm-exec m.fsm --state .git/run --record verify
 ? 2
 $ git add built && git commit -q -m built
 $ rfc-fsm-exec m.fsm --state .git/run --record verify | grep -c "recorded verify"
+1
+```
+
+**Checks describe the current revision.** A check claim satisfies a
+guard only while it describes what is there now: the executor MUST refuse
+an advance whose guard names a check key unless the latest claim for that
+key in the current state visit names a commit whose tree equals the tree
+of the current revision. An edit after a check therefore withdraws it,
+and a rewrite that leaves the content unchanged (`jj describe`, a rebase
+with no conflict) does not. [R-check-current]
+
+```transcript @R-check-current
+$ git init -q . && git commit -q --allow-empty -m seed
+$ git config --local fsm.check.verify "true"
+$ printf 'initial FIX\nFIX -> PUSH\nterminal PUSH\ncheck verify\nguard FIX -> PUSH: verify\n' > m.fsm
+$ git add m.fsm && git commit -q -m machine
+$ rfc-fsm-exec m.fsm --state .git/run >/dev/null
+$ rfc-fsm-exec m.fsm --state .git/run --record verify >/dev/null
+$ echo edit > f && git add f && git commit -q -m edit
+$ rfc-fsm-exec m.fsm --state .git/run PUSH
+! rfc-fsm-exec: verify describes an earlier revision; record it again
+? 1
+$ rfc-fsm-exec m.fsm --state .git/run --record verify >/dev/null
+$ rfc-fsm-exec m.fsm --state .git/run PUSH | grep -c "LEGAL"
 1
 ```
 
@@ -389,6 +426,18 @@ $ rfc-fsm-exec m.fsm --state .git/run --record verify
 ? 2
 ```
 
+```transcript @R-check-resolution
+$ jj git init -q main 2>/dev/null
+$ cd main && printf 'initial A\nA -> B\nterminal B\ncheck verify\n' > m.fsm
+$ jj config set --repo fsm.check.verify true && jj describe -q -m machine && jj new -q
+$ jj workspace add -q ../second 2>/dev/null && cd ../second
+$ test -e .git; echo $?
+1
+$ rfc-fsm-exec ../main/m.fsm --state ../run >/dev/null
+$ rfc-fsm-exec ../main/m.fsm --state ../run --record verify | grep -c "recorded verify"
+1
+```
+
 **Check environment.** The executor runs a key's command with `FSM_RUN`
 set to the record's key (ledger store) or path (file store), `FSM_KEY` to
 the key, and, for a check, `FSM_COMMIT` to the revision under check, so
@@ -423,6 +472,10 @@ $ rfc-fsm-exec m.fsm --state .git/run --audit --recheck >/dev/null; echo $?
 $ git config --local fsm.check.verify "false"
 $ rfc-fsm-exec m.fsm --state .git/run --audit --recheck >/dev/null 2>&1; echo $?
 1
+$ git config --local fsm.check.verify "test -f ok"
+$ for f in .git/fsm-logs/*; do echo tampered >> "$f"; done
+$ rfc-fsm-exec m.fsm --state .git/run --audit >/dev/null 2>&1; echo $?
+1
 ```
 
 **What this proves, and what it does not.** A claim proves that the
@@ -449,15 +502,38 @@ the executor runs one.
 Advancing into a subprocess state MUST start a **child run**: a separate
 record for the child machine, keyed by the parent state's lowercased name
 and the value of the parent's attachment of that name — entering `PR`
-with `pr: 1015` attached starts the child keyed `pr-1015`, numbered as
-that key's next run (`pr-1015/r3`). The executor MUST refuse to enter a
-subprocess state without that attachment. While the parent is in a
-subprocess state, the executor MUST refuse every move out of it except a
-`return` whose child terminal the current child run has reached, and the
-child run then ends. A later entry for the same key starts a new run;
-a finished run is never reopened. `--audit` of a parent MUST audit each
-child run it entered and fail if a return names a terminal its child did
-not reach. [R-subprocess-runs]
+with `pr: 1015` attached starts a run under the key `pr-1015`. The
+executor MUST refuse to enter a subprocess state without that
+attachment, and resolves the child machine as `rfc-fsm-compile` does.
+
+**Binding.** Before writing the child's first state, the executor MUST
+attach `child: <child-key>/r<n> @ <child machine pin>` to the parent's
+entered state, so the parent record names exactly which run belongs to
+which visit; `<n>` is the next run number for that key. Allocation MUST
+be atomic — under an exclusive lock on the child key's directory on the
+file store, and with an idempotency key naming the parent record and
+visit on the ledger store — so two invocations never take the same
+number and a retried advance reuses its number. An executor that stops
+between the binding and the child's first state leaves a binding with no
+record; the next invocation creates the record, so recovery is
+idempotent.
+
+**Placement and addressing.** On the file store a child run lives at
+`<parent record>.d/<child-key>/r<n>`; on the ledger store at the key
+`<child-key>/r<n>` of the parent's ledger. The agent addresses only the
+parent record: while the parent is in a subprocess state, a query
+discloses the bound child run's state, an advance whose target is a
+child state moves the child run, and an advance whose target is a
+parent state is a return. A target that names a state in both machines
+MUST be refused (exit 2) unless qualified with `--child` or `--parent`.
+
+**Return.** The executor MUST refuse every move out of a subprocess state
+except a `return` whose child terminal the bound child run has reached;
+that move ends the child run. A later entry for the same key starts a new
+run; a finished run is never reopened. `--audit` of a parent MUST audit
+every bound child run and fail when a binding names a run that does not
+exist or a return names a terminal its child did not reach.
+[R-subprocess-runs]
 
 ```transcript @R-subprocess-runs
 $ git init -q . && git commit -q --allow-empty -m seed
@@ -484,9 +560,20 @@ $ rfc-fsm-exec parent.fsm --state .git/run JOB
 $ rfc-fsm-exec parent.fsm --state .git/run --attach "job: 1" >/dev/null
 $ rfc-fsm-exec parent.fsm --state .git/run JOB | grep -c "child run job-1/r1 started"
 1
+$ grep -c '^  child: job-1/r1 @' .git/run
+1
 $ rfc-fsm-exec parent.fsm --state .git/run END
 ! rfc-fsm-exec: child run job-1/r1 is at WORK; JOB returns only from DONE
 ? 1
+$ rfc-fsm-exec parent.fsm --state .git/run DONE | grep -c "LEGAL"
+1
+$ rfc-fsm-exec parent.fsm --state .git/run END | grep -c "LEGAL"
+1
+$ rfc-fsm-exec parent.fsm --state .git/run --audit >/dev/null; echo $?
+0
+$ rm .git/run.d/job-1/r1
+$ rfc-fsm-exec parent.fsm --state .git/run --audit >/dev/null 2>&1; echo $?
+1
 ```
 
 ### Record stores
@@ -500,14 +587,19 @@ stores; only the encoding differs.
 The ledger used as a store MUST declare the fields `state` (vocabulary:
 the machine's states, and those of every machine it runs as a
 subprocess), `attach` (free text), and `pin` (free text, the machine pin
-of -00). Encoding:
+of -00). When the ledger does not exist the executor MUST create it with
+those fields; when it exists without them, or with a `state` vocabulary
+lacking a state the machine declares, the executor MUST refuse (exit 2)
+and name the `ledger vocab add` that fixes it, rather than extend a
+vocabulary another process owns. Every write targets the selected
+ledger explicitly. Encoding:
 
 | Run-record operation | `ledger` tool encoding |
 |---|---|
-| initialize | `ledger set <key> pin=<machine pin>`, then `state=<initial>` |
-| legal advance | `ledger set <key> state=<target> -m "<why>" --evidence anchor:<commit>` |
-| `--attach "k: v"` | `ledger set <key> attach=<k> -m "<v>"` |
-| `--record <key>` | `ledger set <key> attach=<key> --evidence <claim>` |
+| initialize | `ledger set <key> pin=<machine pin> --ledger <slug>`, then `state=<initial>` |
+| legal advance | `ledger set <key> state=<target> -m "<why>" --evidence anchor:<commit> --ledger <slug>` |
+| `--attach "k: v"` | `ledger set <key> attach=<k> -m "<v>" --ledger <slug>` |
+| `--record <key>` | `ledger set <key> attach=<key> --evidence <claim> --ledger <slug>` |
 | child run | the child's own key, `<child-key>/r<n>` |
 
 **Replay.** The executor reads a run back as `ledger export <slug>`,
@@ -521,7 +613,7 @@ as it validates a file. [R-ledger-store]
 
 ```transcript @R-ledger-store
 $ git init -q . && git commit -q --allow-empty -m seed && ledger init >/dev/null
-$ printf 'initial A\nA -> B\nB -> A\nterminal B\n' > m.fsm
+$ printf 'initial A\nA -> B\nB -> A\nB -> C\nterminal C\n' > m.fsm
 $ rfc-fsm-exec m.fsm --store ledger:runs/r1 | grep -c "session initialized at A"
 1
 $ rfc-fsm-exec m.fsm --store ledger:runs/r1 --attach "first: visit" >/dev/null
@@ -557,7 +649,7 @@ $ rfc-fsm-exec m.fsm --state run --audit >/dev/null; echo $?
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `fsm.check.<key>` | Command | none | The command a check or observation key runs. jj repo config in a jj repository, otherwise `git config --local`. No default: an unconfigured key cannot be recorded. |
-| `fsm.log-dir` | Path | `<git common dir>/fsm-logs` | Where logs and receipts are kept, named by SHA-256. Resolved through `git rev-parse --git-common-dir`, so it works when `.git` is a file (worktrees) and in jj workspaces with no `.git`. Never committed. |
+| `fsm.log-dir` | Path | `<git common dir>/fsm-logs` | Where logs and receipts are kept, named by SHA-256. Resolved from the backing git repository: `jj git root` in a jj repository (which works from a secondary workspace with no `.git`), otherwise `git rev-parse --git-common-dir` (which works when `.git` is a file). Never committed. |
 | `--state` / `--store` | Store | none | The record store; session mode takes exactly one. |
 
 **Resolution precedence** for a key's command: (1) jj repo config
@@ -570,6 +662,10 @@ committed file or to the run record.
 | Condition | Exit | Recovery |
 |---|---|---|
 | `--attach` of a check or observation key | 1 | Record it with `--record <key>`. |
+| `--record` of a key declared neither `check` nor `observe` | 2 | Declare it in the machine, or `--attach` it as judgment. |
+| A guard's check describes an earlier revision | 1 | Record the check again at the current revision. |
+| A target names a state in both parent and child | 2 | Qualify it with `--child` or `--parent`. |
+| Ledger exists without the fields or states the machine needs | 2 | Run the `ledger vocab add` the message names. |
 | No command configured for a key | 2 | Set `fsm.check.<key>` in jj repo config or local git config. |
 | Command exits nonzero | 1 | Fix the work and record again; nothing was recorded. |
 | `--record` of a check on a dirty plain-git tree | 2 | Commit first. |
@@ -670,7 +766,9 @@ commands resolve only from operator configuration, by key, and the record
 never names a command, so a tampered record can run only commands the
 operator configured. That configuration is local and writable by the
 same user as the agent; it keeps commands out of reach of the work under
-review (a branch cannot carry it), not out of reach of the agent. Running the work under review under a
+review (a branch cannot carry it), not out of reach of the agent. The temporary
+worktree a check runs in fixes the revision; it does not confine the
+command. Running the work under review under a
 configured check is inherent to verifying it, and is the operator's
 choice of command. `--recheck` makes a fabricated check claim fail unless it
 reproduces; it cannot detect a fabricated claim that does reproduce, nor

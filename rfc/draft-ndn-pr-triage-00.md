@@ -42,10 +42,12 @@ when, and only when, they appear in all capitals, as shown here.
 - **PR run** — one walk of one PR through the PR machine: a child run of
   the session (draft-ndn-fsm-session-01), keyed `pr-<N>/r<k>`. A PR may
   have many runs over time; each ends at `DONE`, `PARKED`, or `CANCELLED`.
-- **snapshot** — one poll of one PR's forge state, recorded as an
-  observation; every class in a run is decided from it.
-- **class** — exactly one of `closed`, `parked`, `dirty`, `red`, `review`,
-  `mergeable`, decided from a snapshot.
+- **snapshot** — one reading of one PR's state, recorded as an
+  observation on each visit to `CLASSIFY`: the forge's state, the PR's
+  ownership in the ledger, and its activity cursor (the newest comment or
+  review its earlier runs have seen), in one receipt.
+- **class** — exactly one of `already-merged`, `closed`, `parked`,
+  `dirty`, `red`, `review`, `mergeable`, decided from a snapshot.
 - **instance** — one running triage agent, named by a role and a unique
   suffix (`claude-pr-triage/7f3a`); two sessions of the same role are two
   instances.
@@ -124,6 +126,7 @@ CLASSIFY -> RESPOND
 CLASSIFY -> MERGE
 CLASSIFY -> PARKED
 CLASSIFY -> CANCELLED
+CLASSIFY -> MERGED
 PROBE -> REGEN
 PROBE -> FIX
 REGEN -> VERIFY
@@ -139,15 +142,18 @@ PUSH -> CLASSIFY
 RESPOND -> AWAIT_APPROVAL
 RESPOND -> FIX
 AWAIT_APPROVAL -> RESPOND
-AWAIT_APPROVAL -> CLASSIFY
+AWAIT_APPROVAL -> DONE
+AWAIT_APPROVAL -> PARKED
 MERGE -> MERGED
 MERGE -> AWAIT_HUMAN
 AWAIT_HUMAN -> MERGED
-AWAIT_HUMAN -> CLASSIFY
+AWAIT_HUMAN -> DONE
+AWAIT_HUMAN -> PARKED
 MERGED -> DONE
 terminal DONE PARKED CANCELLED
 observe snapshot
 observe owned
+observe already-merged
 observe closed
 observe parked
 observe dirty
@@ -163,11 +169,13 @@ observe merge-allowed
 observe merged
 observe cleaned
 observe issues-settled
+observe wait-expired
 check regenerated
 check artifacts-clean
 check tests-untouched
 check tests-touched
 check verify
+guard CLASSIFY -> MERGED: snapshot already-merged
 guard CLASSIFY -> CANCELLED: snapshot closed
 guard CLASSIFY -> PARKED: snapshot parked
 guard CLASSIFY -> PROBE: snapshot owned dirty isolated
@@ -176,7 +184,7 @@ guard CLASSIFY -> RESPOND: snapshot owned review
 guard CLASSIFY -> MERGE: snapshot owned mergeable
 guard PROBE -> REGEN: generated-only
 guard PROBE -> FIX: hand-merge
-guard REGEN -> VERIFY: regenerated
+guard REGEN -> VERIFY: change regenerated artifacts-clean
 guard REGEN -> FIX: hand-merge
 guard FIX -> VERIFY: change artifacts-clean tests-untouched
 guard FIX -> TEST_CHANGE: change tests-touched
@@ -187,46 +195,52 @@ guard VERIFY -> PUSH: verify
 guard PUSH -> CLASSIFY: pushed
 guard RESPOND -> AWAIT_APPROVAL: draft
 guard RESPOND -> FIX: requested isolated
-guard AWAIT_APPROVAL -> CLASSIFY: posted
+guard AWAIT_APPROVAL -> DONE: posted
+guard AWAIT_APPROVAL -> PARKED: wait-expired
 guard MERGE -> MERGED: merge-allowed merged
 guard AWAIT_HUMAN -> MERGED: merged
-guard AWAIT_HUMAN -> CLASSIFY: declined
+guard AWAIT_HUMAN -> DONE: declined
+guard AWAIT_HUMAN -> PARKED: wait-expired
 guard MERGED -> DONE: cleaned issues-settled
-note CLASSIFY: record snapshot, then the one class it decides (closed, parked, dirty, red, review, mergeable) and owned; for dirty or red also record isolated — the PR's workspace exists, is at the PR head, and is not the main checkout; the snapshot decides the branch, you do not
+note CLASSIFY: record snapshot, then the one class it decides (already-merged, closed, parked, dirty, red, review, mergeable) and owned; for dirty or red also record isolated — the PR's workspace exists, is at the PR head, and is not the main checkout; the snapshot decides the branch, you do not
 note PROBE: record generated-only when every conflict on trunk is in a generated file, and REGEN resolves it; otherwise attach hand-merge describing the conflict and resolve it in FIX
-note REGEN: record regenerated — the repository's regeneration at the current commit, with its freshness check; if regeneration cannot resolve it, attach hand-merge and go to FIX
+note REGEN: run the repository's regeneration in the PR's workspace and commit the result, attaching change: <commit>; then record regenerated (the freshness check at that commit) and artifacts-clean; if regeneration cannot resolve the conflict, attach hand-merge and go to FIX
 note FIX: the work is yours: change the code in the PR's workspace and attach change: <commit>; record artifacts-clean (no binaries, no untracked or scratch files in the diff) and tests-untouched (the diff edits no test file) to go to VERIFY; a diff that edits a test file records tests-touched instead and goes through TEST_CHANGE; if the failure is not the PR's, record base-fails and answer on the PR; if you cannot proceed, attach blocked with the reason and park
 note TEST_CHANGE: a test file is edited; attach test-reason citing where the behavior change was intended, in writing, by someone other than you (an issue, a review, the PR description), and record artifacts-clean
 note VERIFY: record verify — the configured test command at this commit; a failure goes back to FIX, and a hook that fails under load is a failed verify, not a flaky one
 note PUSH: push through the repository's push wrapper and record pushed (the forge head equals the local bookmark); the next CLASSIFY usually finds CI pending and parks until a later poll
 note RESPOND: read every comment and thread critically before acting (critical-reading); if the review asks for changes, attach requested summarizing them, record isolated, and go to FIX; otherwise draft the reply as the operator speaking (posting-as-the-user), attach draft: <path> sha256 <hash>, and never post from this state
-note AWAIT_APPROVAL: wait for the operator; the post happens only through comment-post --approved, and posted records once it is on the forge; a requested revision goes back to RESPOND
+note AWAIT_APPROVAL: wait for the operator; the post happens only through comment-post --approved, and posted records once it is on the forge, ending the run; a requested revision goes back to RESPOND; record wait-expired when the wait runs out, and the run parks
 note MERGE: record merge-allowed immediately before merging — policy when-approved, every required check green at the snapshot's head commit, no outstanding change request from any reviewer, an approval at that head, and no comment newer than it — then merge with the head pinned (gh pr merge --match-head-commit) and record merged; under policy never, go to AWAIT_HUMAN
-note AWAIT_HUMAN: wait for the operator's merge decision; record merged once they merge, or attach declined with their reason and return to CLASSIFY
+note AWAIT_HUMAN: wait for the operator's merge decision; record merged once they merge; attach declined with their reason if they decline, which ends the run and holds until the PR's head changes; record wait-expired when the wait runs out, and the run parks
 note MERGED: record cleaned (the PR's workspace removed) and issues-settled (every issue the PR claims to fix is closed, or, for a PR merged into a stacked parent, a follow-up is recorded on the parent)
-note DONE: the run is complete; roll up its record into one summary line
+note DONE: the run is complete — merged, answered, or declined; roll up its record into one summary line
 note PARKED: nothing to do in this run — CI pending, nothing to act on, another instance owns the PR, or you were blocked; a later session starts a new run
 note CANCELLED: the PR was closed without merging; nothing further
 ```
 
 ### Classification
 
-A run's branch is decided by the forge, through one snapshot. The
-`snapshot` observation MUST record the PR's forge state once, as its
-receipt (the `pr-poll` JSON for the PR named by the run). Each class
-observation MUST decide from that receipt only — never from a fresh poll —
-so every class in a run is judged against the same state. The classes
+A run's branch is decided by the PR's state, through a snapshot. On every
+visit to `CLASSIFY`, the `snapshot` observation MUST record one receipt
+holding the forge's state (the `pr-poll` JSON for the PR named by the
+run), the PR's ownership as the ledger shows it, and its activity
+cursor. Each class observation MUST decide from that visit's receipt only
+— never from a fresh poll or a receipt from an earlier visit — so a class
+is judged against one consistent state, and a return to `CLASSIFY` after
+a push judges the new head. The classes
 MUST partition: exactly one class observation exits 0 for a given
 snapshot, by this precedence, first match wins: [R-pr-classify]
 
 | Precedence | Class | Holds when |
 |---|---|---|
-| 1 | `closed` | The PR is closed or merged on the forge. |
-| 2 | `parked` | Another live instance owns the PR; or gating checks are pending or queued; or the forge returned an error or an incomplete state; or nothing below holds (no activity since this PR's last run, nothing to merge). The receipt names which. |
-| 3 | `dirty` | The PR conflicts with its base. |
-| 4 | `red` | A gating check failed at the head commit. |
-| 5 | `review` | A comment, review, or thread is newer than this PR's last run. |
-| 6 | `mergeable` | Every gating check is green and the PR is approved at the head commit. |
+| 1 | `already-merged` | The PR is merged on the forge (by anyone). Its run goes straight to `MERGED`, so cleanup and issue settlement still happen. |
+| 2 | `closed` | The PR is closed without merging. |
+| 3 | `parked` | Another live instance owns the PR; or gating checks are pending or queued; or the forge returned an error or an incomplete state; or nothing below holds (no activity since this PR's last run, nothing to merge). The receipt names which. |
+| 4 | `dirty` | The PR conflicts with its base. |
+| 5 | `red` | A gating check failed at the head commit. |
+| 6 | `review` | A comment, review, or thread is newer than the activity cursor, excluding comments whose IDs an earlier run recorded in a `posted` receipt. |
+| 7 | `mergeable` | Every gating check is green and the PR is approved at the head commit, and no earlier run recorded `declined` at that head. |
 
 Draft PRs are `parked` unless the operator has configured otherwise. A **gating check** is one the
 forge's branch protection requires for merging.
@@ -240,28 +254,42 @@ $ pr-class --snapshot snap.json red; echo $?
 $ printf '{"number":7,"state":"OPEN","mergeable":"MERGEABLE","checks":"PENDING"}\n' > pending.json
 $ pr-class --snapshot pending.json parked; echo $?
 0
-$ for c in closed parked dirty red review mergeable; do pr-class --snapshot snap.json $c && echo $c; done | wc -l
+$ printf '{"number":7,"state":"MERGED","mergeable":"UNKNOWN","checks":"SUCCESS"}\n' > merged.json
+$ pr-class --snapshot merged.json already-merged; echo $?
+0
+$ for c in already-merged closed parked dirty red review mergeable; do pr-class --snapshot snap.json $c && echo $c; done | wc -l
 1
 ```
 
 ### Ownership
 
-The `owned` observation MUST exit 0 only when no other live instance owns
-the PR, and recording it makes the current instance the owner. Ownership
-belongs to a run: it ends when the run reaches a terminal, so a finished
-or parked run never blocks a later one. Acquisition writes an owner event
-and reads back the PR's owner events; the earliest unreleased one wins,
-so two instances that race see the same winner. A PR another live
-instance owns classifies `parked`. This is coordination between
-cooperating agents — two Claude sessions, or Claude and Codex — not a
-lock against a hostile one. [R-pr-owner]
+The `owned` observation MUST exit 0 only when no other instance holds a
+live lease on the PR, and recording it gives the current instance the
+lease. A lease is an owner event on the PR's key in the ledger; it is
+live until it expires (`pr-triage.lease`), is released, or its run
+reaches a terminal, and the holder renews it with every record it
+writes. Acquisition writes a claim event, then reads the PR's owner
+events back in ledger order: the earliest live claim wins, and a losing
+instance MUST release its own claim at once, so a lost race leaves no
+stale claim behind. A crashed holder's lease simply expires. A PR whose
+lease another instance holds classifies `parked`. [R-pr-owner]
+
+Arbitration needs one ordered record: it holds among instances writing
+the same ledger in one repository's git directory. Instances in clones
+that have not exchanged ledger events are not coordinated, and this
+document does not claim they are. On the file store, which has no shared
+order, `pr-init` MUST refuse to start a second live instance (an
+exclusive lock file under the repository's git directory).
 
 ```transcript @R-pr-owner
+$ export PR_TRIAGE_LEASE=2s
 $ PR_TRIAGE_INSTANCE=claude-pr-triage/a pr-owned --pr 7; echo $?
 0
 $ PR_TRIAGE_INSTANCE=claude-pr-triage/b pr-owned --pr 7; echo $?
 1
-$ PR_TRIAGE_INSTANCE=claude-pr-triage/a pr-release --pr 7
+$ ledger status pr-7 --ledger pr-triage | grep -c "claude-pr-triage/b"
+0
+$ sleep 3
 $ PR_TRIAGE_INSTANCE=claude-pr-triage/b pr-owned --pr 7; echo $?
 0
 ```
@@ -273,20 +301,32 @@ $ PR_TRIAGE_INSTANCE=claude-pr-triage/b pr-owned --pr 7; echo $?
 | `pr-triage.merge` | `never` \| `when-approved` | `never` | Whether the machine merges on its own. |
 
 Under `never`, `merge-allowed` MUST exit nonzero, so `MERGE` proceeds only
-through `AWAIT_HUMAN`. Under `when-approved` it exits 0 only when, at the
-snapshot's head commit: every check branch protection requires is green;
-no reviewer's latest review requests changes; at least one approval is at
-that head; and no comment or review is newer than that approval. It MUST
-be recorded immediately before merging, and the merge MUST pin the head
-(`gh pr merge --match-head-commit <sha>`), so a push between the check
-and the merge fails the merge instead of merging unreviewed code. The
-default is `never` because a condition nobody thought of becomes an
-unattended merge. [R-pr-merge-policy]
+through `AWAIT_HUMAN`. Under `when-approved` it MUST fetch the PR's
+review and check state from the forge afresh — not from the snapshot —
+and exit 0 only when: the head is the snapshot's head; every check
+branch protection requires is green at that head; no reviewer's latest
+review requests changes; at least one approval is at that head; and no
+comment or review is newer than that approval. The merge that follows
+MUST pin the head (`gh pr merge --match-head-commit <sha>`), so a push
+between authorization and merge fails the merge. A comment or review
+posted at the same head in that interval is not detected; the window is
+the time between two commands, and this document names it rather than
+claim it closed. The default is `never` because a condition nobody
+thought of becomes an unattended merge. [R-pr-merge-policy]
 
 ```transcript @R-pr-merge-policy
-$ jj git init -q . 2>/dev/null; jj config set --repo pr-triage.merge never
-$ printf '{"number":7,"state":"OPEN","mergeable":"MERGEABLE","checks":"SUCCESS","reviews":[{"state":"APPROVED"}]}\n' > snap.json
-$ pr-merge-allowed --snapshot snap.json; echo $?
+$ jj git init -q . 2>/dev/null
+$ printf '{"number":7,"state":"OPEN","head":"abc","checks":"SUCCESS","reviews":[{"state":"APPROVED","commit":"abc","at":"2026-10-03T10:00:00Z"}],"comments":[]}\n' > ok.json
+$ printf '{"number":7,"state":"OPEN","head":"abc","checks":"SUCCESS","reviews":[{"state":"APPROVED","commit":"abc","at":"2026-10-03T10:00:00Z"}],"comments":[{"at":"2026-10-03T11:00:00Z","body":"hold on"}]}\n' > objection.json
+$ jj config set --repo pr-triage.merge never
+$ PR_FORGE_FIXTURE=ok.json pr-merge-allowed --head abc; echo $?
+1
+$ jj config set --repo pr-triage.merge when-approved
+$ PR_FORGE_FIXTURE=ok.json pr-merge-allowed --head abc; echo $?
+0
+$ PR_FORGE_FIXTURE=objection.json pr-merge-allowed --head abc; echo $?
+1
+$ PR_FORGE_FIXTURE=ok.json pr-merge-allowed --head def; echo $?
 1
 ```
 
@@ -294,14 +334,14 @@ $ pr-merge-allowed --snapshot snap.json; echo $?
 
 `AWAIT_APPROVAL` and `AWAIT_HUMAN` wait on the operator, and what they
 wait for happens on the forge: a comment posted, a PR merged. The agent
-MUST record the leaving observation (`posted`, `merged`) by polling it at
-`pr-triage.poll-interval`, up to `pr-triage.poll-limit` attempts, and then
-park the session rather than wait without bound; where the operator's
-decision is written to the ledger (approving a draft, declining a merge),
-the agent SHOULD block on `ledger watch` for the run's key instead of
-polling. The revision and decline edges (`AWAIT_APPROVAL -> RESPOND`,
-`AWAIT_HUMAN -> CLASSIFY`) are always available; only the forward edge
-waits on its observation. [R-pr-await]
+MUST poll for the leaving observation (`posted`, `merged`) every
+`pr-triage.poll-interval`; after `pr-triage.poll-limit` polls it records
+`wait-expired` and the run parks, ending its lease, so a wait never holds
+a PR or a session without bound. Where the operator's decision is written
+to the ledger (approving a draft, declining a merge), the agent SHOULD
+block on `ledger watch` for the run's key instead of polling. The
+revision edge (`AWAIT_APPROVAL -> RESPOND`) and the decline edge
+(`AWAIT_HUMAN -> DONE`) are always available. [R-pr-await]
 
 ```transcript @R-pr-await
 $ ledger init >/dev/null 2>&1; cursor=$(ledger watch --timeout 1 2>/dev/null | sed -n 's/.*"starting_cursor":"\([^"]*\)".*/\1/p' | head -1)
@@ -312,8 +352,9 @@ $ ledger watch --since "$cursor" --timeout 1 >/dev/null 2>&1; echo $?
 ### Closing a run
 
 On reaching `DONE`, the run's ledger thread MUST be rolled up into one
-summary line naming the PR, the merge, and the issues it settled, so the
-ledger shows one line per finished run. [R-pr-rollup]
+summary line naming the PR and what the run did — merged and the issues
+it settled, answered, or declined — so the ledger shows one line per
+finished run. [R-pr-rollup]
 
 ```transcript @R-pr-rollup
 $ ledger tail -n 1 | grep -c "pr-7/r1: merged"
@@ -351,13 +392,20 @@ $ pr-init .pr-triage | grep -c "machines in .pr-triage"
 | `pr-triage.merge` | `never` \| `when-approved` | `never` | Merge policy (above). |
 | `pr-triage.drafts` | `park` \| `triage` | `park` | Whether draft PRs are triaged. |
 | `pr-triage.poll-interval` | Duration | `60s` | Spacing of forge polls while waiting. |
-| `pr-triage.poll-limit` | Integer | `30` | Polls before a wait parks the session. |
+| `pr-triage.poll-limit` | Integer | `30` | Polls before a wait records `wait-expired` and parks the run. |
+| `pr-triage.lease` | Duration | `30m` | How long an ownership lease lives without renewal. |
 | `pr-triage.store` | `file` \| `ledger` | `ledger` when the `ledger` tool is installed, else `file` | The record store. |
 | `fsm.check.<key>` | Command | none | The command for each check and observation key, per draft-ndn-fsm-session-01. |
 
 All keys are jj repository config, never committed. The `store` default
-prefers the ledger because only there does a run's record outlive the
-workspace it describes. `PR_TRIAGE_INSTANCE` names the instance; when it
+prefers the ledger because its records survive the workspace and travel
+with the ledger's pushes; a file record also survives the workspace,
+since it lives under the repository's git directory, but not a move to
+another clone. Snapshots, receipts, logs, and drafts live in the
+repository's fsm log directory (draft-ndn-fsm-session-01), shared by
+every workspace and never pushed: a handoff to another clone carries the
+ledger's history but not these files, so the receiving instance starts a
+new run rather than resuming one. `PR_TRIAGE_INSTANCE` names the instance; when it
 is unset, `pr-init` derives one from the agent role and a random suffix.
 
 ### Errors
@@ -388,8 +436,10 @@ $ rfc-fsm-compile "$RFC_DOC" --tag @R-pr-session > process.fsm
 $ printf 'SWEEP\n' > run
 $ rfc-fsm-exec process.fsm --state run | grep -c "missing: swept"
 1
-$ test "$(wc -l < "$PR_TRIAGE_SKILL/SKILL.md")" -le 60; echo $?
-0
+$ rfc-tangle "$RFC_DOC" t > /dev/null
+$ printf 'CLASSIFY\nFIX\n  change: abc123\n' > mid-fix
+$ rfc-fsm-exec t/*.pr-machine.fsm --state mid-fix | grep -c "missing: artifacts-clean tests-untouched"
+1
 ```
 
 ## Alternatives Considered
