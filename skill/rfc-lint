@@ -403,6 +403,14 @@ lint_file() {
                 dl[s] = t
                 next
             }
+            # a check key (draft-ndn-fsm-session-01): evidence only the
+            # executor attaches, by running a configured check.
+            if (w[i0] == "check" && n - i0 + 1 == 2) {
+                if (w[i0+1] !~ /^[a-z][a-z0-9-]*$/) print "check key must be a lowercase identifier: " w[i0+1]
+                else if (w[i0+1] in checks) print "duplicate check " w[i0+1]
+                else checks[w[i0+1]] = 1
+                next
+            }
             if (w[i0] == "guard" && n - i0 + 1 >= 5 && w[i0+2] == "->" && w[i0+3] ~ /:$/) {
                 gf = w[i0+1]; gt = w[i0+3]; sub(/:$/, "", gt)
                 gkey = gf SUBSEP gt
@@ -429,7 +437,7 @@ lint_file() {
             print "line " NR ": not an fsm statement: " $0
         }
         function delete_arrays(   k) {
-            split("", states); split("", term); split("", trans)
+            split("", states); split("", term); split("", trans); split("", checks)
             split("", outdeg); split("", adj); split("", seen); split("", q); split("", noted); split("", dl)
             split("", guards); split("", gfrom); split("", gto)
         }
