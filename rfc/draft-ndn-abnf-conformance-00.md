@@ -378,8 +378,10 @@ $ rfc-abnf -z --reject d.md claim < misses; echo $?
 $ grep -cE '^near-misses: [1-9][0-9]* from [0-9]+ candidates$' report
 1
 $ printf '```abnf\nnone = ""\n```\n' > empty.md
-$ rfc-abnf empty.md none --near-miss 5 --require-near-miss --length > misses; echo $?
+$ rfc-abnf empty.md none --near-miss 5 --require-near-miss --length > misses 2> report; echo $?
 0
+$ grep -cE '^near-misses: [1-9][0-9]* from [0-9]+ candidates$' report
+1
 $ rfc-abnf --length --reject empty.md none < misses; echo $?
 0
 ```
@@ -463,6 +465,7 @@ $ rfc-abnf d.md bin --timeout 1s --against 'sleep 5' >/dev/null 2>&1; echo $?
 | `--max-attempts` | Integer | `50 × N` | Candidate strings generation or mutation tries before reporting exhaustion. |
 | `--generate` / `--near-miss` with `--against` | Integer | `100` each | Samples per side of a differential check. |
 | `--length` / `-z` / `--whole` | Framing | LF records | Input framing; `--length` and `-z` also frame output, `--whole` is input-only (see Input framing). |
+| `--version` | Flag | off | Print the matcher's pinned release, archive checksum, and the directory it was loaded from. |
 | `--witness` | Flag | off | Run every witness table in the document (Level 1). |
 | `--reject` | Flag | off | Exit 0 only when every record fails to match. |
 | `--generate N` / `--near-miss N` | Integer | none | Print up to N valid strings / near-misses (Level 3). |

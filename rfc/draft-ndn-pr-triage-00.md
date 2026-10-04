@@ -240,7 +240,7 @@ note AWAIT_HUMAN: wait with pr-wait human-merged for the operator's decision; hu
 note MERGED: record cleaned (pr-ws done removed the PR's workspace) and issues-settled (every issue the PR claims to fix is closed, or, for a PR merged into a stacked parent, a follow-up is recorded on the parent)
 note DONE: the run is complete — merged, answered, or declined; run pr-done to roll its record up into one summary line
 note PARKED: nothing to do in this run — CI pending, nothing to act on, another instance holds the lease, the wait ended, or you were blocked; run pr-done to roll it up; a later session starts a new run
-note CANCELLED: the PR was closed without merging; nothing further
+note CANCELLED: the PR was closed without merging; run pr-done to roll it up
 ```
 
 Every non-terminal state after `CLASSIFY` has an edge to `PARKED`, guarded
@@ -332,10 +332,12 @@ $ pr-class --snapshot held.json parked; echo $?
 The `snapshot` observation takes the lease when no other instance holds
 a live one. A lease is an owner event on the PR's key in the ledger; it
 is live until it expires (`pr-triage.lease`), is released, or its run
-reaches a terminal. Renewal belongs to `pr-lease run -- <command>`, never to the
-executor, which knows nothing of leases: `pr-init` configures every key
-whose Lease is "held" (Acting through wrappers) as `pr-lease run --
-<its command>`. `pr-lease run` MUST renew the lease every third of
+reaches a terminal. Renewal belongs to `pr-lease run`, never to the executor, which knows
+nothing of leases: `pr-init` sets the record wrapper of every key whose
+Lease is "held" (Acting through wrappers) to `pr-lease run --`
+(`fsm.record-wrap.<key>`, draft-ndn-fsm-session-01), so the lease is
+held while the key is recorded and not when the check is later
+rechecked — a finished run's checks recheck without any lease. `pr-lease run` MUST renew the lease every third of
 `pr-triage.lease` for as long as the command runs, not only before it
 starts; if a renewal finds the lease taken, it MUST stop the command and
 exit nonzero, so nothing is recorded. Acquisition writes a claim event, then reads the PR's owner
@@ -380,7 +382,7 @@ A long command keeps its lease while a competitor keeps trying:
 ```transcript @R-pr-owner
 $ pr-fixture . --pr 7 --at VERIFY --verify-command 'sleep 7' > /dev/null
 $ export PR_TRIAGE_LEASE=2s
-$ jj config get fsm.check.verify | grep -c '^pr-lease run -- '
+$ jj config get fsm.record-wrap.verify | grep -c '^pr-lease run --'
 1
 $ (for i in 1 2 3 4 5 6; do sleep 1; PR_TRIAGE_INSTANCE=codex/z pr-lease take --pr 7 && echo stolen; done) > attempts &
 $ rfc-fsm-exec .pr-triage/session.fsm --state .git/session --record verify | grep -c "recorded verify"
@@ -390,16 +392,34 @@ $ wait; grep -c stolen attempts
 ? 1
 ```
 
+A finished run's checks recheck while another instance holds the PR,
+without touching its lease:
+
+```transcript @R-pr-owner
+$ pr-fixture . --pr 7 --at PUSH --fresh > /dev/null
+$ S="rfc-fsm-exec .pr-triage/session.fsm --state .git/session"
+$ $S --record pushed > /dev/null && $S CLASSIFY > /dev/null && $S --record snapshot > /dev/null && $S --record parked > /dev/null && $S PARKED > /dev/null
+$ PR_TRIAGE_INSTANCE=codex/z pr-lease take --pr 7; echo $?
+0
+$ $S --audit --recheck > /dev/null; echo $?
+0
+$ ledger status pr-7 --ledger pr-triage | grep -c 'owner.*codex/z'
+1
+```
+
 Losing the lease stops a running command and records nothing; a wait
 that loses its lease records why and parks:
 
 ```transcript @R-pr-owner
-$ pr-fixture . --pr 7 --at VERIFY --verify-command 'sleep 30; touch ran-to-end' > /dev/null
+$ mark="$PWD/marks" && mkdir "$mark"
+$ pr-fixture . --pr 7 --at VERIFY --verify-command "echo \$\$ > $mark/pid; sleep 30; touch $mark/ran-to-end" > /dev/null
 $ S="rfc-fsm-exec .pr-triage/session.fsm --state .git/session"
-$ (sleep 1; pr-lease steal --pr 7 --as codex/z) &
+$ (for i in $(seq 100); do test -s "$mark/pid" && break; sleep 0.1; done; pr-lease steal --pr 7 --as codex/z) &
 $ $S --record verify > /dev/null 2>&1; echo $?
 1
-$ wait; test -e ws/pr-7/ran-to-end; echo $?
+$ wait; kill -0 "$(cat "$mark/pid")" 2> /dev/null; echo $?
+1
+$ test -e "$mark/ran-to-end"; echo $?
 1
 $ grep -c 'verify: check:' .git/fsm-logs/runs/pr-7/r1
 0
@@ -553,9 +573,11 @@ $ S="rfc-fsm-exec .pr-triage/session.fsm --state .git/session"
 $ printf '{"number":7,"state":"MERGED","head":"%s","mergeCommit":"m1"}\n' "$(cat head)" > merged.json
 $ PR_FORGE_FIXTURE=forge-state.json $S --record human-merged > /dev/null 2>&1; echo $?
 1
-$ PR_FORGE_FIXTURE=merged.json $S --record human-merged > /dev/null; echo $?
+$ jj config set --repo pr-triage.poll-interval 0s
+$ (sleep 1; cp merged.json forge-now.json) & cp forge-state.json forge-now.json
+$ PR_FORGE_FIXTURE=forge-now.json pr-wait human-merged --pr 7; echo $?
 0
-$ $S MERGED | grep -c "LEGAL"
+$ wait; $S MERGED | grep -c "LEGAL"
 1
 ```
 
@@ -563,7 +585,7 @@ $ $S MERGED | grep -c "LEGAL"
 
 `AWAIT_APPROVAL` and `AWAIT_HUMAN` wait on the operator, and what they
 wait for happens on the forge: a comment posted, a PR merged. `pr-wait`
-MUST poll for the leaving observation (`posted`, `merged`) every
+MUST poll for the leaving observation (`posted`, `human-merged`) every
 `pr-triage.poll-interval`, renewing the lease; after
 `pr-triage.poll-limit` polls, or on finding its lease lost, it records
 `wait-ended` and the run parks, so a wait never holds a PR or a session
@@ -601,6 +623,14 @@ $ pr-done --pr 7 > /dev/null; echo $?
 0
 $ ledger tail -n 1 --ledger pr-triage | grep -c "pr-7/r1: DONE — merged"
 1
+$ pr-fixture c --pr 8 --at CLASSIFY > /dev/null && cd c
+$ S="rfc-fsm-exec .pr-triage/session.fsm --state .git/session"
+$ printf '{"number":8,"state":"CLOSED","merged":false}\n' > closed.json
+$ PR_FORGE_FIXTURE=closed.json $S --record snapshot > /dev/null && $S --record closed > /dev/null && $S CANCELLED > /dev/null
+$ pr-done --pr 8 > /dev/null; echo $?
+0
+$ ledger tail -n 1 --ledger pr-triage | grep -c "pr-8/r1: CANCELLED — closed unmerged"
+1
 ```
 
 ### Derivation, setup, and fixtures
@@ -610,13 +640,14 @@ blocks from this document with `rfc-tangle`, compile the session machine
 with `rfc-fsm-compile` and validate the result with `rfc-run --type fsm`,
 configure `fsm.base.<key>` for each history check as `pr-base`, which
 prints the commit the PR's diff is taken against (the merge base of the
-run's workspace with the PR's base branch), wrap every command whose
-Lease is "held" (Acting through wrappers) in `pr-lease run --`, list
+run's workspace with the PR's base branch), set `fsm.record-wrap.<key>`
+to `pr-lease run --` for every key whose Lease is "held" (Acting
+through wrappers), list
 every check, observation, and base key whose command is not configured,
 and, on the ledger store, create the repository's `pr-triage` ledger — or accept an existing one, such as one imported from another clone, that already has these fields — with
 the fields the record store needs (`state`, the union of both machines'
-states; `attach`; `pin`) and the fields `owner`, `posted`, `handled`,
-and `declined`. The `.fsm` files MUST NOT
+states; `attach`; `pin`) and the fields `owner`, `posted`, and
+`handled`. The `.fsm` files MUST NOT
 be edited; a change to the process is a change to this document,
 re-tangled. [R-pr-init]
 
@@ -628,8 +659,8 @@ $ rfc-run --type fsm process.fsm >/dev/null; echo $?
 $ jj git init -q repo 2>/dev/null && cd repo && ledger init > /dev/null
 $ pr-init .pr-triage | grep -c "machines in .pr-triage"
 1
-$ ledger show --ledger pr-triage | grep -cE 'state|attach|pin|owner|posted|handled|declined'
-7
+$ ledger show --ledger pr-triage | grep -cE 'state|attach|pin|owner|posted|handled'
+6
 ```
 
 The skill MUST ship `bin/pr-fixture <dir> [--pr N] [--at STATE] [--with
@@ -699,7 +730,8 @@ $ rfc-fsm-exec .pr-triage/session.fsm --state .git/session | grep -c "state: FIX
 | `pr-triage.poll-limit` | Integer | `30` | Polls before a wait records `wait-ended` and parks the run. |
 | `pr-triage.lease` | Duration | `30m` | How long an ownership lease lives without renewal. |
 | `pr-triage.store` | `file` \| `ledger` | `ledger` when the `ledger` tool is installed, else `file` | The record store. |
-| `fsm.check.<key>` | Command | none | The command for each check and observation key, per draft-ndn-fsm-session-01; `pr-init` wraps the lease-holding ones in `pr-lease run --`. |
+| `fsm.check.<key>` | Command | none | The command for each check and observation key, per draft-ndn-fsm-session-01. |
+| `fsm.record-wrap.<key>` | Command | `pr-lease run --` for lease-holding keys | Set by `pr-init`; holds the lease while a key is recorded, never during a recheck. |
 | `fsm.base.<key>` | Command | `pr-base` | The base commit for each history check (`artifacts-clean`, `tests-untouched`, `tests-touched`); set by `pr-init`. |
 
 All keys are jj repository config, never committed. The `store` default

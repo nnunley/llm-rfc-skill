@@ -393,6 +393,7 @@ $ rfc-fsm-exec m.fsm --state .git/run --commit-wip > /dev/null; echo $?
 0
 $ git status --porcelain | grep -c .
 0
+? 1
 $ git log -1 --format=%s | grep -c 'wip'
 1
 $ rfc-fsm-exec m.fsm --state .git/run --record verify | grep -c "recorded verify"
@@ -594,7 +595,33 @@ receipt file exists and hashes to the recorded value. `--audit --recheck`
 MUST additionally re-run every *check* at its recorded commit (and base)
 in a temporary worktree and fail the audit unless it exits 0 again;
 observations are never re-run, because the world they observed has
-moved on — their receipts are what the audit checks. [R-recheck]
+moved on — their receipts are what the audit checks. A recheck runs the
+key's command bare, never under its record wrapper (below), so it needs
+nothing the original recording needed beyond the code. [R-recheck]
+
+**Record wrappers.** A process MAY supervise recording without changing
+what a check computes: when `fsm.record-wrap.<key>` is configured, the
+executor runs the key's command under it — `<wrapper> <command>` — when
+recording, and MUST NOT use it when rechecking. A wrapper that exits
+nonzero records nothing. This keeps a check a pure function of its
+revision while letting a process, for example, hold a lease for as long
+as the recording runs. [R-record-wrap]
+
+```transcript @R-record-wrap
+$ git init -q . && git commit -q --allow-empty -m seed
+$ git config --local fsm.check.verify "true"
+$ git config --local fsm.record-wrap.verify "sh -c 'test -e allowed && exec \"\$@\"' wrap"
+$ printf 'initial A\nA -> B\nterminal B\ncheck verify\nguard A -> B: verify\n' > m.fsm
+$ git add m.fsm && git commit -q -m machine
+$ rfc-fsm-exec m.fsm --state .git/run > /dev/null
+$ rfc-fsm-exec m.fsm --state .git/run --record verify > /dev/null 2>&1; echo $?
+1
+$ touch allowed && rfc-fsm-exec m.fsm --state .git/run --record verify > /dev/null; echo $?
+0
+$ rfc-fsm-exec m.fsm --state .git/run B > /dev/null && rm allowed
+$ rfc-fsm-exec m.fsm --state .git/run --audit --recheck > /dev/null; echo $?
+0
+```
 
 ```transcript @R-recheck
 $ git init -q . && git commit -q --allow-empty -m seed
@@ -872,6 +899,7 @@ $ rfc-fsm-exec m.fsm --state run --audit >/dev/null; echo $?
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `fsm.check.<key>` | Command | none | The command a check or observation key runs. jj repo config in a jj repository, otherwise `git config --local`. No default: an unconfigured key cannot be recorded. |
+| `fsm.record-wrap.<key>` | Command | none | Optional wrapper the executor runs a key's command under when recording, never when rechecking. |
 | `fsm.base.<key>` | Command | none | For a `history` check, the command that prints the base commit it runs against. Required for history checks. |
 | `fsm.log-dir` | Path | `<git common dir>/fsm-logs` | Where logs, receipts, and file-store child runs are kept. Resolved from the backing git repository: `jj git root` in a jj repository, which prints the backing git directory itself (inside `.jj` or `.git`, never the working tree) and works from a secondary workspace with no `.git`, otherwise `git rev-parse --git-common-dir` (which works when `.git` is a file). Never committed. |
 | `--state` / `--store` | Store | none | The record store; session mode takes exactly one. |
