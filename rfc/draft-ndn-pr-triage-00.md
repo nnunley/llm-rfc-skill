@@ -46,7 +46,8 @@ when, and only when, they appear in all capitals, as shown here.
   observation on each visit to `CLASSIFY`: the forge's state, the PR's
   lease, the activity it can see, and the facts its earlier runs left
   (comments they posted, heads at which a merge was declined, activity
-  they handled), in one receipt.
+  they handled), plus the operator's current head-specific bypass grant
+  and its ledger event identity and time, in one receipt.
 - **class** — exactly one of `already-merged`, `closed`, `parked`,
   `dirty`, `red`, `review`, `mergeable`, decided from a snapshot.
 - **instance** — one running triage agent, named by a role and a unique
@@ -276,7 +277,10 @@ earlier run or earlier in this one — in order, with its ID
 (`activity`), where an edit to a comment is new activity, so a reviewer
 that edits one comment in place is seen each time it does; and the facts left by earlier runs and earlier in this
 run — the comment IDs posted and the heads at which a merge was
-declined. Taking the lease inside the snapshot means no other
+declined; and the current `bypass` grant, if any, as `bypass: {head,
+event, at}`, where `event` identifies the ledger event that set the
+field and `at` is that event's authorization time. Without a grant,
+`bypass` is absent. Taking the lease inside the snapshot means no other
 instance can acquire it between the reading and the class decision. Each class
 observation MUST decide from that visit's receipt only — never from a
 fresh poll or a receipt from an earlier visit — so a class is judged
@@ -308,7 +312,7 @@ given snapshot, by this precedence, first match wins:
 | 5 | `dirty` | The PR conflicts with its base, or the base requires branches to be up to date before merging and the PR is behind it. |
 | 6 | `red` | A gating check failed at the head commit. |
 | 7 | `review` | `activity` holds an item that is not a comment an earlier run posted. |
-| 8 | `mergeable` | Every gating check is green and the PR is approved at the head commit by a person, and no earlier run recorded a decline at that head. |
+| 8 | `mergeable` | Every gating check is green; no reviewer's latest review requests changes; either a person approved the head commit, or the snapshot holds an operator bypass grant for that head with no comment or review newer than its authorization time (Merge policy); and no earlier run recorded a decline at that head. |
 
 Draft PRs are `parked` unless the operator has configured otherwise. A
 **gating check** is one the forge's branch protection requires for
@@ -553,8 +557,9 @@ existing tests, or both — and a fix with no behavior to test, such as a
 rename or a restructuring, needs none. Nothing here blocks a push for
 want of a test. Whether a fix's tests are adequate is a finding the
 reviewer raises, which comes back as activity like any other, and
-`mergeable` still needs the reviewer's approval at the new head
-(Classification). [R-pr-proof]
+`mergeable` still needs approval at the new head or the operator's
+head-specific missing-approval exception (Classification and Merge
+policy). [R-pr-proof]
 
 To make that judgment cheap, the agent MAY record the history check
 `fix-proven` (default command `pr-proof`) and cite its receipt in the
@@ -658,14 +663,23 @@ MUST fetch the PR's review and check state from the forge afresh — not
 from the snapshot — on every attempt, and merge only when: the head is
 the snapshot's head; every gating check is green at that head; the head
 is up to date with the base when the base requires it; no reviewer's
-latest review requests changes; at least one approval by a person is at
-that head; and no comment or review is newer than that approval. It
-MUST NOT use the forge's administrative override unless the operator
-authorized it for this PR at this head (the ledger field
-`bypass=<head>`), and then only for a missing approval: an override
-never covers a red, pending, or missing check, nor a branch behind its
-base.
-Otherwise it refuses and `pr-merge --held` succeeds. The merge MUST pin the head
+latest review requests changes; and at least one approval by a person
+is at that head, with no comment or review newer than that approval.
+The sole approval exception is an operator authorization for this PR at
+this head, the `bypass=<head>` field on the PR's `pr-triage` ledger key.
+When approval is missing, `pr-merge` MUST re-read that field and its
+setting event from the ledger, require the same event and head captured
+in the snapshot, and require that no comment or review in the fresh
+forge read is newer than the event's authorization time. That event
+supplies the time without a separate timestamp field. A changed,
+cleared, or absent grant refuses the exception until a new snapshot.
+Only this exception permits the forge's administrative override. It
+never covers a red, pending, or missing check, a branch behind its base,
+or any reviewer's latest `CHANGES_REQUESTED` review. A grant for an old
+head cannot authorize a new head. The file-only store supplies no ledger
+grant, so it retains the approval requirement. Policy `never` refuses
+even with a grant. If the authorization conditions do not hold,
+`pr-merge` refuses and `pr-merge --held` succeeds. The merge MUST pin the head
 (`gh pr merge --match-head-commit <sha>`), so a push between
 authorization and merge fails the merge. A comment or review posted at
 the same head between the fetch and the merge is not detected; the
@@ -691,19 +705,86 @@ $ PR_FORGE_FIXTURE=ok.json $S --record merged > /dev/null; echo $?
 0
 ```
 
-An authorized override covers a missing approval and nothing else:
+An authorized override reaches `MERGE` from ordinary initialization and
+covers only a missing approval. The snapshot uses the ledger grant; the
+wrapper still checks each condition afresh:
 
 ```transcript @R-pr-merge-policy
-$ pr-fixture . --pr 7 --at MERGE > /dev/null
+$ pr-fixture . --pr 7 --at CLASSIFY > /dev/null
 $ S="rfc-fsm-exec .pr-triage/session.fsm --state .git/session"
 $ jj config set --repo pr-triage.merge when-approved
-$ ledger set pr-7 --ledger pr-triage bypass="$(cat head)" > /dev/null
-$ printf '{"number":7,"state":"OPEN","head":"%s","checks":"FAILURE","reviews":[],"comments":[]}\n' "$(cat head)" > red.json
-$ printf '{"number":7,"state":"OPEN","head":"%s","checks":"SUCCESS","reviews":[],"comments":[]}\n' "$(cat head)" > unapproved.json
-$ PR_FORGE_FIXTURE=red.json $S --record merged > /dev/null 2>&1; echo $?
+$ printf '{"number":7,"state":"OPEN","head":"%s","mergeable":"MERGEABLE","checks":"SUCCESS","reviews":[],"comments":[]}\n' "$(cat head)" > unapproved.json
+$ PR_FORGE_FIXTURE=unapproved.json pr-snapshot --pr 7 --print > no-grant.json
+$ pr-class --snapshot no-grant.json parked; echo $?
+0
+$ ledger set pr-7 --ledger pr-triage bypass="$(cat head)" > /dev/null; echo $?
+0
+$ PR_FORGE_FIXTURE=unapproved.json pr-snapshot --pr 7 --print > grant.json
+$ python3 -c 'import json;d=json.load(open("grant.json"));g=d["bypass"];print(g["head"]==open("head").read().strip() and bool(g["event"]) and bool(g["at"]))'
+True
+$ PR_FORGE_FIXTURE=unapproved.json $S --record snapshot > /dev/null && $S --record mergeable > /dev/null; echo $?
+0
+$ $S MERGE | grep -c "LEGAL"
 1
+$ python3 -c 'import json;d=json.load(open("unapproved.json"));d["checks"]="FAILURE";json.dump(d,open("red.json","w"));d["checks"]="PENDING";json.dump(d,open("pending.json","w"));del d["checks"];json.dump(d,open("missing.json","w"))'
+$ for f in red pending missing; do PR_FORGE_FIXTURE=$f.json $S --record merged > /dev/null 2>&1; echo $?; done
+1
+1
+1
+$ python3 -c 'import json;d=json.load(open("unapproved.json"));d.update(behind=True,strict=True);json.dump(d,open("behind.json","w"))'
+$ PR_FORGE_FIXTURE=behind.json $S --record merged > /dev/null 2>&1; echo $?
+1
+$ python3 -c 'import json;d=json.load(open("unapproved.json"));d["head"]="new-head";json.dump(d,open("new-head.json","w"))'
+$ PR_FORGE_FIXTURE=new-head.json $S --record merged > /dev/null 2>&1; echo $?
+1
+$ python3 -c 'import json;d=json.load(open("unapproved.json"));d["reviews"]=[{"state":"CHANGES_REQUESTED","commit":d["head"],"at":"2000-01-01T00:00:00Z"}];json.dump(d,open("requested.json","w"))'
+$ PR_FORGE_FIXTURE=requested.json $S --record merged > /dev/null 2>&1; echo $?
+1
+$ python3 -c 'import json;d=json.load(open("unapproved.json"));d["comments"]=[{"at":"9999-01-01T00:00:00Z","body":"hold on"}];json.dump(d,open("objection.json","w"));d["comments"]=[];d["reviews"]=[{"state":"COMMENTED","commit":d["head"],"at":"9999-01-01T00:00:00Z"}];json.dump(d,open("later-review.json","w"))'
+$ for f in objection later-review; do PR_FORGE_FIXTURE=$f.json $S --record merged > /dev/null 2>&1; echo $?; done
+1
+1
+$ jj config set --repo pr-triage.merge never
+$ PR_FORGE_FIXTURE=unapproved.json $S --record merged > /dev/null 2>&1; echo $?
+1
+$ jj config set --repo pr-triage.merge when-approved
 $ PR_FORGE_FIXTURE=unapproved.json $S --record merged > /dev/null; echo $?
 0
+$ $S MERGED > /dev/null && $S --record cleaned > /dev/null && $S --record issues-settled > /dev/null && $S DONE > /dev/null; echo $?
+0
+```
+
+A grant does not follow a new head or clear an objection, even when the
+activity was handled by an earlier run:
+
+```transcript @R-pr-classify
+$ green='"forge":{"number":7,"state":"OPEN","mergeable":"MERGEABLE","checks":"SUCCESS","head":"abc","approved":false,"reviews":[],"comments":[]},"lease":"taken","activity":[],"posted":[],"declined":[]'
+$ grant='"bypass":{"head":"abc","event":"grant-1","at":"2026-10-03T10:00:00Z"}'
+$ printf '{%s,%s}\n' "$green" "$grant" > grant.json
+$ pr-class --snapshot grant.json mergeable; echo $?
+0
+$ python3 -c 'import json;d=json.load(open("grant.json"));d["forge"]["head"]="def";json.dump(d,open("stale.json","w"));d["forge"]["head"]="abc";d["forge"]["comments"]=[{"at":"2026-10-03T11:00:00Z","body":"hold on"}];json.dump(d,open("objection.json","w"));d["forge"]["comments"]=[];d["forge"]["reviews"]=[{"state":"CHANGES_REQUESTED","commit":"abc","at":"2026-10-03T09:00:00Z"}];json.dump(d,open("requested.json","w"))'
+$ for f in stale objection requested; do pr-class --snapshot $f.json mergeable; echo $?; done
+1
+1
+1
+```
+
+The wrapper also refuses a grant changed after classification:
+
+```transcript @R-pr-merge-policy
+$ pr-fixture . --pr 7 --at CLASSIFY > /dev/null
+$ S="rfc-fsm-exec .pr-triage/session.fsm --state .git/session"
+$ jj config set --repo pr-triage.merge when-approved
+$ printf '{"number":7,"state":"OPEN","head":"%s","mergeable":"MERGEABLE","checks":"SUCCESS","reviews":[],"comments":[]}\n' "$(cat head)" > unapproved.json
+$ ledger set pr-7 --ledger pr-triage bypass="$(cat head)" > /dev/null
+$ PR_FORGE_FIXTURE=unapproved.json $S --record snapshot > /dev/null && $S --record mergeable > /dev/null && $S MERGE > /dev/null
+$ ledger set pr-7 --ledger pr-triage bypass= > /dev/null
+$ PR_FORGE_FIXTURE=unapproved.json $S --record merged > /dev/null 2>&1; echo $?
+1
+$ ledger set pr-7 --ledger pr-triage bypass="$(cat head)" > /dev/null
+$ PR_FORGE_FIXTURE=unapproved.json $S --record merged > /dev/null 2>&1; echo $?
+1
 ```
 
 A human merge under policy `never` is observed, not performed:
@@ -809,8 +890,9 @@ through wrappers), list
 every check, observation, and base key whose command is not configured,
 and, on the ledger store, create the repository's `pr-triage` ledger — or accept an existing one, such as one imported from another clone, that already has these fields — with
 the fields the record store needs (`state`, the union of both machines'
-states; `attach`; `pin`) and the fields `owner`, `posted`, and
-`handled`. The `.fsm` files MUST NOT
+states; `attach`; `pin`) and the fields `owner`, `posted`, `handled`,
+and `bypass` (empty until the operator authorizes a particular head).
+The `.fsm` files MUST NOT
 be edited; a change to the process is a change to this document,
 re-tangled. [R-pr-init]
 
@@ -822,8 +904,8 @@ $ rfc-run --type fsm process.fsm >/dev/null; echo $?
 $ jj git init -q repo 2>/dev/null && cd repo && ledger init > /dev/null
 $ pr-init .pr-triage | grep -c "machines in .pr-triage"
 1
-$ ledger show --ledger pr-triage | grep -cE 'state|attach|pin|owner|posted|handled'
-6
+$ ledger show --ledger pr-triage | grep -cE 'state|attach|pin|owner|posted|handled|bypass'
+7
 ```
 
 The skill MUST ship `bin/pr-fixture <dir> [--pr N] [--at STATE] [--with
