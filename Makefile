@@ -2,9 +2,10 @@
 # this file, CI, and the README all call it; none reimplement it.
 
 RFC_DIR ?= rfc
-SKILL_DEST ?= $(HOME)/.claude/skills/authoring-rfcs
+SKILL_DEST ?= $(HOME)/.claude/skills/evidence-review
 
 test:
+	bash checks/review-session.sh
 	skill/rfc-check $(if $(FILES),$(FILES),$(RFC_DIR))
 
 lint:

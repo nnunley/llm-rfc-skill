@@ -1,0 +1,125 @@
+#!/usr/bin/env bash
+set -eu
+
+fail() { printf 'review-session: %s\n' "$*" >&2; exit 1; }
+action=${1:-}
+case "$action:$#" in
+    resume:1|new:2|read:2|save:2|activate:2|deactivate:2) ;;
+    *) fail 'usage: review-session new "scope" | read/save/activate/deactivate DIR | resume' ;;
+esac
+umask 077
+root=${REVIEW_HOME:-"$HOME/.cache/review-sessions"}
+worktree=$(git rev-parse --show-toplevel 2>/dev/null || pwd -P)
+worktree=$(cd "$worktree" && pwd -P)
+key=$(printf '%s\n' "$worktree" | shasum -a 256 | cut -d ' ' -f 1)
+pointer="$root/active/$key"
+
+if [ "$action" = resume ]; then
+    if [ ! -e "$pointer" ] && [ ! -L "$pointer" ]; then
+        echo 'review-session: no active review' >&2
+        exit 3
+    fi
+    [ -L "$pointer" ] || fail 'invalid active pointer'
+    session=$(readlink "$pointer")
+else
+    session=$2
+fi
+
+if [ "$action" = new ]; then
+    [ ! -L "$root" ] || fail 'storage root is a symlink'
+    mkdir -p "$root"
+    [ -O "$root" ] || fail 'storage root is not owned by this user'
+    root=$(cd "$root" && pwd -P)
+    session=$(mktemp -d "$root/session.XXXXXXXX")
+    mkdir "$session/state" "$session/history" "$session/evidence"
+    printf '%s\n' "$worktree" > "$session/.worktree"
+    {
+        printf '# Scope\n\nRequest: %s\nWorktree: %s\n' "$2" "$worktree"
+        printf 'Authority: the request only; record additional grants with their source.\n'
+    } > "$session/state/00_scope.md"
+    cat > "$session/state/05_workflow.md" <<'EOF'
+# Review dependencies
+
+```makefile
+review-complete: scope-known findings-assessed findings-resolved checks-current outcome-accepted
+findings-assessed: scope-known
+findings-resolved: findings-assessed
+checks-current: findings-resolved
+outcome-accepted: checks-current
+```
+
+Targets are claims in 15_facts.md; fulfillment requires current evidence
+and fulfilled prerequisites. Derive the next action here, not from 99_next.md.
+EOF
+    cat > "$session/state/15_facts.md" <<'EOF'
+# Facts
+
+States: UNKNOWN / ESTABLISHED / CONTRADICTED / RETRACTED.
+Record scope/revision and observed-at with each witness.
+
+| ID | Claim | State | For / against | Depends on |
+|---|---|---|---|---|
+| scope-known | Outcome and criterion are defined | UNKNOWN | - | - |
+| findings-assessed | Relevant findings have been examined | UNKNOWN | - | - |
+| findings-resolved | Findings have supported dispositions | UNKNOWN | - | - |
+| checks-current | Required checks support this revision | UNKNOWN | - | - |
+| outcome-accepted | Authorized acceptance or standing criterion is satisfied | UNKNOWN | - | - |
+EOF
+    cat > "$session/state/20_review.md" <<'EOF'
+# Review
+
+Promised outcome: unset; establish from the request and supported premises.
+Premise IDs: unset.
+Acceptance condition / consuming stage: unset.
+Acceptance: pending; record the authorized party's decision or standing criterion.
+
+| Finding | Fact IDs | Disposition | Evidence / rationale |
+|---|---|---|---|
+EOF
+    cat > "$session/state/99_next.md" <<'EOF'
+# Next
+
+Goal: review-complete
+Next (cached): establish scope-known from the request.
+Worker: none.
+EOF
+    printf '%s\n' "$session"
+    exit 0
+fi
+
+[ -d "$session" ] && [ ! -L "$session" ] && [ -O "$session" ] || fail 'invalid session directory'
+session=$(cd "$session" && pwd -P)
+case "$action" in
+    activate|deactivate|resume)
+        [ -f "$session/.worktree" ] && [ ! -L "$session/.worktree" ] || fail 'missing worktree identity'
+        [ "$(cat "$session/.worktree")" = "$worktree" ] || fail 'session belongs to another worktree'
+        ;;
+esac
+if [ "$action" = deactivate ]; then
+    [ -L "$pointer" ] && [ "$(readlink "$pointer")" = "$session" ] || fail 'session is not active'
+    rm "$pointer"
+    exit 0
+fi
+[ -d "$session/state" ] && [ ! -L "$session/state" ] || fail 'invalid state directory'
+files=(00_scope.md 05_workflow.md 15_facts.md 20_review.md 99_next.md)
+for name in "${files[@]}"; do
+    [ -f "$session/state/$name" ] && [ ! -L "$session/state/$name" ] || fail "missing or linked state file: $name"
+done
+if [ "$action" = activate ]; then
+    [ ! -L "$root" ] && [ ! -L "$root/active" ] || fail 'linked pointer storage'
+    mkdir -p "$root/active"
+    if [ -L "$pointer" ] && [ "$(readlink "$pointer")" = "$session" ]; then exit 0; fi
+    [ ! -e "$pointer" ] && [ ! -L "$pointer" ] || fail 'another review is active; deactivate it explicitly'
+    ln -sn "$session" "$pointer" 2>/dev/null || fail 'another review is active; deactivate it explicitly'
+elif [ "$action" = read ] || [ "$action" = resume ]; then
+    printf 'Session: %s\n' "$session"
+    for name in "${files[@]}"; do
+        printf '\n--- %s ---\n' "$name"
+        cat "$session/state/$name"
+    done
+else
+    [ -d "$session/history" ] && [ ! -L "$session/history" ] || fail 'invalid history directory'
+    snapshot=$(mktemp -d "$session/history/revision.XXXXXXXX")
+    for name in "${files[@]}"; do cp "$session/state/$name" "$snapshot/$name"; done
+    printf '%s\n' "$snapshot"
+fi

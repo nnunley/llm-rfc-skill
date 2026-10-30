@@ -24,8 +24,8 @@ jobs:
           awk --version 2>/dev/null | head -1 || echo "awk:    BSD (no --version)"
         shell: bash
 
-      - name: Full gate — lint, published evidence, draft declarations, digest invariants
-        run: skill/rfc-check rfc
+      - name: Review container and RFC conformance
+        run: make test
         shell: bash
 
       # macOS is the only platform with a containment provider today, so it
