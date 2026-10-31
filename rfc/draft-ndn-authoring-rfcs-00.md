@@ -305,7 +305,8 @@ keyword lookalikes inside the Specification are flagged as ambiguity
 warnings — inside evidence fences they are exempt, so evidence content is
 never policed as prose. Syntax defined by the document is expressed in
 ABNF (RFC 5234), which the linter validates for rule-definition syntax,
-undefined references, and duplicate definitions [R-abnf]; grammars carry
+undefined references, and duplicate definitions [R-abnf]; a prose value
+(`<text>`, RFC 5234 §4) is a terminal, not a reference; grammars carry
 concrete valid/invalid witnesses as their checkable shadow.
 
 ```transcript @R-bcp14
@@ -318,6 +319,10 @@ $ rfc-lint draft-a-x-00.md 2>&1 | grep -c "lacks the BCP 14 boilerplate"
 $ printf '# draft-a-x-00: X\n**Status:** DRAFT\n```abnf\nfoo = bar\n```\n' > draft-a-x-00.md
 $ rfc-lint draft-a-x-00.md 2>&1 | grep -c "undefined rule bar"
 1
+$ printf '# draft-a-x-00: X\n**Status:** DRAFT\n```abnf\nfoo = <any word of the language>\n```\n' > draft-a-x-00.md
+$ rfc-lint draft-a-x-00.md 2>&1 | grep -c "undefined rule"
+0
+? 1
 ```
 
 State machines are expressed in fsm blocks — `initial`, `A -> B`

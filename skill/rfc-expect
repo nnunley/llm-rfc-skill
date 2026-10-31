@@ -1,0 +1,73 @@
+#!/usr/bin/env python3
+"""rfc-expect <actual> <expected> — match output against an expected-result block.
+
+Per draft-ndn-snippet-attributes-00: lines are compared after dropping trailing
+whitespace and trailing blank lines; a line of exactly `...` matches zero or
+more lines; within a line, `{{regex}}` matches that regular expression and all
+other text matches literally. Exit 0 on a match, 1 with a unified diff otherwise,
+2 on a usage or read error.
+"""
+import difflib
+import functools
+import re
+import sys
+
+
+def normalize(text):
+    lines = [l.rstrip() for l in text.split("\n")]
+    while lines and not lines[-1]:
+        lines.pop()
+    return lines
+
+
+def line_pattern(line):
+    parts = re.split(r"\{\{(.*?)\}\}", line)
+    out = ""
+    for i, part in enumerate(parts):
+        out += part if i % 2 else re.escape(part)
+    return re.compile(out + r"\Z")
+
+
+def matches(actual, expected):
+    patterns = [None if e == "..." else line_pattern(e) for e in expected]
+
+    @functools.lru_cache(maxsize=None)
+    def go(a, e):
+        if e == len(patterns):
+            return a == len(actual)
+        if patterns[e] is None:
+            return any(go(k, e + 1) for k in range(a, len(actual) + 1))
+        return a < len(actual) and patterns[e].match(actual[a]) is not None and go(a + 1, e + 1)
+
+    return go(0, 0)
+
+
+def main(argv):
+    if len(argv) != 3:
+        print(__doc__, file=sys.stderr)
+        return 2
+    try:
+        with open(argv[1], encoding="utf-8") as fh:
+            actual = normalize(fh.read())
+        with open(argv[2], encoding="utf-8") as fh:
+            expected = normalize(fh.read())
+    except OSError as e:
+        print("rfc-expect: %s" % e, file=sys.stderr)
+        return 2
+    try:
+        ok = matches(actual, expected)
+    except re.error as e:
+        print("rfc-expect: bad {{regex}} in expected text: %s" % e, file=sys.stderr)
+        return 2
+    if ok:
+        return 0
+    sys.stdout.writelines(
+        difflib.unified_diff(
+            [l + "\n" for l in expected], [l + "\n" for l in actual], "expected", "actual"
+        )
+    )
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

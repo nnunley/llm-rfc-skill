@@ -32,6 +32,13 @@ problems=$(awk '
         if (s in dl) print "duplicate deadline for " s
         dl[s] = t; next
     }
+    # a check key (draft-ndn-fsm-session-01): attachable only by the executor
+    ($1 == "check" || $1 == "observe") && (NF == 2 || (NF == 3 && $1 == "check" && $3 == "history")) {
+        if ($2 !~ /^[a-z][a-z0-9-]*$/) print "check key must be a lowercase identifier: " $2
+        else if ($2 in checks) print "duplicate check " $2
+        else checks[$2] = 1
+        next
+    }
     $1 == "guard" && NF >= 5 && $3 == "->" && $4 ~ /:$/ {
         gf = $2; gt = $4; sub(/:$/, "", gt)
         key = gf SUBSEP gt

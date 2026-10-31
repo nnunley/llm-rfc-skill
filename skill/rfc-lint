@@ -302,6 +302,7 @@ lint_file() {
             sub(/[[:space:]]*;.*$/, "", line)
             sub(/^[A-Za-z][A-Za-z0-9-]*[[:space:]]*=\/?/, "", line)
             gsub(/"[^"]*"/, " ", line)               # drop literals
+            gsub(/<[^>]*>/, " ", line)               # drop prose values (RFC 5234 §4)
             gsub(/%[sib]?[0-9A-Fa-fx.\-]*/, " ", line) # drop numeric terminals
             n = split(line, toks, /[^A-Za-z0-9-]+/)
             for (i = 1; i <= n; i++)
@@ -333,8 +334,10 @@ lint_file() {
     local markers tags m t prose
     prose=$(awk '/^```/ { infence = !infence; next } !infence' "$f")
     markers=$(grep -oE '\[R-[a-z0-9-]+\]' <<< "$prose" | tr -d '[]' | sort -u)
-    tags=$( { grep -oE '^```[a-z-]+ @R-[a-z0-9-]+' "$f"; grep -oE '<!-- *evidence: *@R-[a-z0-9-]+' <<< "$prose"; } \
-            | grep -oE '@R-[a-z0-9-]+' | tr -d '@' | sort -u )
+    # Fence and table tags come from rfc-snippets, the one reader of info
+    # strings (draft-ndn-snippet-attributes-00), so a tag after attributes
+    # or legacy comma flags pairs like any other.
+    tags=$("$LINT_DIR/rfc-snippets" tags "$f" | sed 's/^/R-/' | sort -u)
     while IFS= read -r m; do
         [[ -z "$m" ]] && continue
         grep -qx "$m" <<< "$tags" || \
@@ -347,14 +350,12 @@ lint_file() {
     done <<< "$tags"
     # Non-empty check: every tagged fence must contain at least one
     # non-blank line before its closing fence
-    local hollow
-    hollow=$(awk '
-        /^```[a-z-]+ @R-/ { tag = $2; inblk = 1; n = 0; next }
-        inblk && /^```$/ { if (n == 0) print tag; inblk = 0; next }
-        inblk && NF > 0 { n++ }
-    ' "$f")
-    if [[ -n "$hollow" ]]; then
-        while IFS= read -r t; do err "$f" "evidence block $t is empty"; done <<< "$hollow"
+    # Grammar, empty blocks, chunks, includes, expect pairing and parameter
+    # tables: one problem per line from rfc-snippets.
+    local snippet_problems
+    snippet_problems=$("$LINT_DIR/rfc-snippets" lint "$f" || true)
+    if [[ -n "$snippet_problems" ]]; then
+        while IFS= read -r t; do err "$f" "$t"; done <<< "$snippet_problems"
     fi
     if [[ -n "$markers" || -n "$tags" ]]; then
         ck "evidence($(grep -c . <<< "$markers")⇄$(grep -c . <<< "$tags"))"
@@ -402,6 +403,14 @@ lint_file() {
                 dl[s] = t
                 next
             }
+            # a check key (draft-ndn-fsm-session-01): evidence only the
+            # executor attaches, by running a configured check.
+            if ((w[i0] == "check" || w[i0] == "observe") && (n - i0 + 1 == 2 || (n - i0 + 1 == 3 && w[i0] == "check" && w[i0+2] == "history"))) {
+                if (w[i0+1] !~ /^[a-z][a-z0-9-]*$/) print "check key must be a lowercase identifier: " w[i0+1]
+                else if (w[i0+1] in checks) print "duplicate check " w[i0+1]
+                else checks[w[i0+1]] = 1
+                next
+            }
             if (w[i0] == "guard" && n - i0 + 1 >= 5 && w[i0+2] == "->" && w[i0+3] ~ /:$/) {
                 gf = w[i0+1]; gt = w[i0+3]; sub(/:$/, "", gt)
                 gkey = gf SUBSEP gt
@@ -428,7 +437,7 @@ lint_file() {
             print "line " NR ": not an fsm statement: " $0
         }
         function delete_arrays(   k) {
-            split("", states); split("", term); split("", trans)
+            split("", states); split("", term); split("", trans); split("", checks)
             split("", outdeg); split("", adj); split("", seen); split("", q); split("", noted); split("", dl)
             split("", guards); split("", gfrom); split("", gto)
         }
